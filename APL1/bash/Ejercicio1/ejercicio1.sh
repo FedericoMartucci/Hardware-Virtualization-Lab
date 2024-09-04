@@ -74,26 +74,27 @@ function main() {
         exit $ERROR_DIRECTORIO_SIN_ARCHIVOS;
     fi
 
-    # Crear un archivo de números ganadores (puedes también usar una variable)
-    awk -F"," '
-    {
-        for (i = 1; i <= NF; i++)
-            numerosGanadores[$i]++
-    }
-    END {
-        for (num in numerosGanadores)
-            print num > "ganadores.txt"
-    }
-    ' ganadores.csv
+    numerosGanadores=$(awk -F"," '
+        {
+            for (i = 1; i <= NF; i++)
+                numerosGanadores[$i]++
+        }
+        END {
+            for (num in numerosGanadores)
+                printf "%s ", num
+        }
+        ' ganadores.csv)
 
     for archivoCSV in "$directorioEntrada"/*.csv; do
         agencia=$(eliminarExtensionArchivo "$archivoCSV")
-        awk -F"," -v agencia="$agencia" '
-        BEGIN {
-            # Leer números ganadores desde el archivo
-            while ((getline line < "ganadores.txt") > 0)
-                ganadores[line] = 1
-            close("ganadores.txt")
+        awk -F"," -v agencia="$agencia" -v numerosGanadores="$numerosGanadores" 'BEGIN {
+            # Dividir la variable numerosGanadores en un array asociativo usando espacios como separador
+            split(numerosGanadores, ganadoresArray, " ")
+            
+            # Guardar los números ganadores en el array asociativo "ganadores"
+            for (i in ganadoresArray) {
+                ganadores[ganadoresArray[i]] = 1
+            }
         }
         {
             # Validar que los registros no tengan NF != 6
@@ -105,10 +106,14 @@ function main() {
             # Validar que los números jugados estén entre 0 y 99 + logica de aciertos
             aciertos = 0
             for (i = 2; i <= NF; i++) {
+                # Elimino el \r generado por un salto de linea en Windows (\r\n) ya que Linux no lo detecta y causa comportamientos inesperados.
+                gsub(/\r/, "", $i)
+
                 if ($i < 0 || $i > 99) {
                     print "Error: El archivo", FILENAME, "tiene números fuera del rango permitido en la línea", NR
                     exit 3
                 }
+
                 if (ganadores[$i]) {
                     
                     aciertos++
@@ -118,7 +123,7 @@ function main() {
             # Generar el registro si hay 3, 4 o 5 aciertos
             if (aciertos >= 3) {
                 print "Jugada:", $1, "Agencia:", agencia, "Aciertos:", aciertos
-                # Aquí podrías acumular en un archivo o estructura JSON
+                # TODO: acumular en un archivo o estructura JSON
             }
         }
         ' "$archivoCSV"
