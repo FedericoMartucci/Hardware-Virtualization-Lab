@@ -30,6 +30,8 @@ declare ERROR_ARCHIVO_SALIDA_Y_PANTALLA=4;
 declare ERROR_DIRECTORIO_SIN_ARCHIVOS=5;
 declare ERROR_EXTENSION=6;
 declare ERROR_RUTA_INVALIDA=7;
+declare ERROR_NUMERO_DE_CAMPOS_INCORRECTOS=8;
+declare ERROR_NUMERO_JUGADO_INVALIDO=9;
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Funciones ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -87,7 +89,7 @@ function main() {
 
     for archivoCSV in "$directorioEntrada"/*.csv; do
         agencia=$(eliminarExtensionArchivo "$archivoCSV")
-        awk -F"," -v agencia="$agencia" -v numerosGanadores="$numerosGanadores" 'BEGIN {
+        awk -F"," -v agencia="$agencia" -v numerosGanadores="$numerosGanadores" -v error_num_campos="$ERROR_NUMERO_DE_CAMPOS_INCORRECTOS" -v error_num_jugado="$ERROR_NUMERO_JUGADO_INVALIDO" 'BEGIN {
             # Dividir la variable numerosGanadores en un array asociativo usando espacios como separador
             split(numerosGanadores, ganadoresArray, " ")
             
@@ -100,7 +102,7 @@ function main() {
             # Validar que los registros no tengan NF != 6
             if (NF != 6) {
                 print "Error: El archivo", FILENAME, "tiene un número incorrecto de campos en la línea", NR
-                exit 2
+                exit error_num_campos
             }
 
             # Validar que los números jugados estén entre 0 y 99 + logica de aciertos
@@ -111,7 +113,7 @@ function main() {
 
                 if ($i < 0 || $i > 99) {
                     print "Error: El archivo", FILENAME, "tiene números fuera del rango permitido en la línea", NR
-                    exit 3
+                    exit error_num_jugado
                 }
 
                 if (ganadores[$i]) {
@@ -196,13 +198,10 @@ if [ "$mostrarPorPantalla" = false ]; then
     # Verifico que la ruta del archivo de salida exista creando un archivo temporal
     touch "$rutaArchivoSalida" 2>/dev/null;
     
-    if [ $? != 0 ]; then
+    if ! touch "$rutaArchivoSalida" 2>/dev/null; then
         echo "ERROR: Se debe especificar una ruta válida para guardar el archivo JSON.";                
         exit $ERROR_RUTA_INVALIDA;     
     fi
-    
-    # Eliminar el archivo temporal si se creó
-    rm -f "$rutaArchivoSalida";
 
     # Verifico que el archivo indicado en la ruta de salida tenga como extension JSON
     extension="${rutaArchivoSalida##*.}";
