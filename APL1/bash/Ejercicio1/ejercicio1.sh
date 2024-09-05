@@ -20,7 +20,14 @@
 # Variables en donde se van a almacenar los parametros de entrada
 declare directorioEntrada="";
 declare rutaArchivoSalida="";
+declare numerosGanadores="";
 declare mostrarPorPantalla=false;
+
+# Vector asociativo en donde se van a guardar la cantidad aciertos de cada jugada por agencia
+declare -A vectorAciertos;
+
+# Variable en formato JSON para guardar en el archivo de salida o mostrarlo por pantalla
+declare jsonData=$(jq -n '{ "5_aciertos": [], "4_aciertos": [], "3_aciertos": [] }');
 
 # Variables para retorno de errores (exit)
 declare ERROR_PARAMETROS_INVALIDOS=1;
@@ -56,10 +63,10 @@ function eliminarExtensionArchivo() {
 }
 
 
-# mostrarOGuardarArchivoJson: Determina segun los parametros de entrada, si se muestra
+# imprimirArchivoJson: Determina segun los parametros de entrada, si se muestra
 # por pantalla o si se almacena en un archivo JSON
 
-function mostrarOGuardarArchivoJson() {
+function imprimirArchivoJson() {
     if [ "$mostrarPorPantalla" = true ]; then
         echo "$jsonData";
     else
@@ -68,14 +75,33 @@ function mostrarOGuardarArchivoJson() {
     fi
 }
 
+# armarArchivoJson: Construye la salida en base al vector asociacito declarado (ver main).
+# Busco el dni del alumno si se encuentra en el JSON
+#   Si no se encuentra, armo la estructura para un alumno nuevo
+# Caso contrario
+#   Busco la ubicacion del DNI del alumno y agrego la materia nueva
 
-function main() {
+function generarJson() {
+    for clave in "${!vectorAciertos[@]}"; do
+        agencia=$(echo "$clave" | cut -d '-' -f1);
+        jugada=$(echo "$clave" | cut -d '-' -f2);
+        aciertos=${vectorAciertos["$clave"]};
 
-    if ! ls "$directorioEntrada"/*.csv &>/dev/null; then
-        echo "ERROR: No se encontraron archivos CSV en el directorio especificado.";
-        exit $ERROR_DIRECTORIO_SIN_ARCHIVOS;
-    fi
+        case $aciertos in
+            5)
+                jsonData=$(echo "$jsonData" | jq --arg agencia "$agencia" --arg jugada "$jugada" '.["5_aciertos"] += [{ agencia: $agencia, jugada: $jugada }]');
+                ;;
+            4)
+                jsonData=$(echo "$jsonData" | jq --arg agencia "$agencia" --arg jugada "$jugada" '.["4_aciertos"] += [{ agencia: $agencia, jugada: $jugada }]');
+                ;;
+            3)
+                jsonData=$(echo "$jsonData" | jq --arg agencia "$agencia" --arg jugada "$jugada" '.["3_aciertos"] += [{ agencia: $agencia, jugada: $jugada }]');
+                ;;
+        esac
+    done
+}
 
+function obtenerNumerosGanadores() {
     numerosGanadores=$(awk -F"," '
         {
             for (i = 1; i <= NF; i++)
@@ -85,11 +111,21 @@ function main() {
             for (num in numerosGanadores)
                 printf "%s ", num
         }
-        ' ganadores.csv)
+        ' ganadores.csv
+    )
+}
+
+function procesarArchivos() {
+    # Creo archivo temporal para guardar los resultados post-procesamiento
+    archivo_temporal=$(mktemp)
 
     for archivoCSV in "$directorioEntrada"/*.csv; do
         agencia=$(eliminarExtensionArchivo "$archivoCSV")
-        awk -F"," -v agencia="$agencia" -v numerosGanadores="$numerosGanadores" -v error_num_campos="$ERROR_NUMERO_DE_CAMPOS_INCORRECTOS" -v error_num_jugado="$ERROR_NUMERO_JUGADO_INVALIDO" 'BEGIN {
+        awk -F"," \
+        -v agencia="$agencia" \
+        -v numerosGanadores="$numerosGanadores" \
+        -v error_num_campos="$ERROR_NUMERO_DE_CAMPOS_INCORRECTOS" \
+        -v error_num_jugado="$ERROR_NUMERO_JUGADO_INVALIDO" 'BEGIN {
             # Dividir la variable numerosGanadores en un array asociativo usando espacios como separador
             split(numerosGanadores, ganadoresArray, " ")
             
@@ -117,21 +153,39 @@ function main() {
                 }
 
                 if (ganadores[$i]) {
-                    
                     aciertos++
                 }
             }
 
             # Generar el registro si hay 3, 4 o 5 aciertos
             if (aciertos >= 3) {
-                print "Jugada:", $1, "Agencia:", agencia, "Aciertos:", aciertos
-                # TODO: acumular en un archivo o estructura JSON
+                print agencia "-" NR, aciertos;
             }
         }
-        ' "$archivoCSV"
+       ' "$archivoCSV" >> "$archivo_temporal"
     done
+}
 
-# mostrarOGuardarArchivoJson;
+function llenarArrayDesdeArchivoTemporal() {
+    while read -r clave aciertos; do
+        vectorAciertos["$clave"]=$aciertos
+    done < "$archivo_temporal"
+
+    # Limpiar archivo temporal
+    rm "$archivo_temporal"
+}
+
+function main() {
+    if ! ls "$directorioEntrada"/*.csv &>/dev/null; then
+        echo "ERROR: No se encontraron archivos CSV en el directorio especificado.";
+        exit $ERROR_DIRECTORIO_SIN_ARCHIVOS;
+    fi
+
+    obtenerNumerosGanadores;
+    procesarArchivos;
+    llenarArrayDesdeArchivoTemporal;
+    generarJson;
+    imprimirArchivoJson;
 }
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Manejo de las opciones ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -195,13 +249,17 @@ if [ "$mostrarPorPantalla" = false ]; then
         exit $ERROR_DIRECTORIO;
     fi
 
-    # Verifico que la ruta del archivo de salida exista creando un archivo temporal
+    # Verifico que la ruta de salida exista creando un archivo temporal
     touch "$rutaArchivoSalida" 2>/dev/null;
     
-    if ! touch "$rutaArchivoSalida" 2>/dev/null; then
-        echo "ERROR: Se debe especificar una ruta válida para guardar el archivo JSON.";                
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Se debe especificar una ruta válida para guardar el archivo JSON.";         
+        ayuda;        
         exit $ERROR_RUTA_INVALIDA;     
     fi
+    
+    # Eliminar el archivo temporal si se creó
+    rm -f "$rutaArchivoSalida";
 
     # Verifico que el archivo indicado en la ruta de salida tenga como extension JSON
     extension="${rutaArchivoSalida##*.}";
