@@ -20,7 +20,14 @@
 # Variables en donde se van a almacenar los parametros de entrada
 declare directorioEntrada="";
 declare rutaArchivoSalida="";
+declare numerosGanadores="";
 declare mostrarPorPantalla=false;
+
+# Vector asociativo en donde se van a guardar la cantidad aciertos de cada jugada por agencia
+declare -A vectorAciertos;
+
+# Variable en formato JSON para guardar en el archivo de salida o mostrarlo por pantalla
+declare jsonData=$(jq -n '{ "5_aciertos": [], "4_aciertos": [], "3_aciertos": [] }');
 
 # Variables para retorno de errores (exit)
 declare ERROR_PARAMETROS_INVALIDOS=1;
@@ -40,12 +47,12 @@ function ayuda() {
     echo "DESCRIPCIÓN: Este script procesa archivos CSV de notas de finales y genera un archivo JSON con el resumen de las notas de los alumnos.";
     echo "OPCIONES:";
     echo "  -d, --directorio   Ruta del directorio que contiene los archivos CSV a procesar.";
-    echo "  -a, --archivo      Ruta del archivo JSON de salida (no es un directorio, es la ruta completa incluyendo el nombre del archivo).";
-    echo "  -p, --pantalla     Muestra la salida por pantalla, no genera el archivo JSON.";
+    echo "  -a, --archivo      Ruta del archivo JSON de salida (incluyendo el nombre del archivo).";
+    echo "  -p, --pantalla     Muestra la salida por pantalla en lugar de generar un archivo JSON.";
     echo "  -h, --help         Muestra este mensaje de ayuda.";
     echo "ACLARACIONES:"
-    echo "  - Para este ejercicio se utiliza el comando jq, por lo tanto, es necesaria su instalacion (sudo apt install jq)";
-    echo "  - Los parámetros -a o --archivo y -p o --pantalla no se pueden usar a la vez."
+    echo "  - Se requiere la instalación del comando jq (sudo apt install jq).";
+    echo "  - Los parámetros -a o --archivo y -p o --pantalla no se pueden usar juntas."
 }
 
 # eliminarExtensionArchivo: Los utilizo para los archivos a procesar ya que sus nombre 
@@ -55,11 +62,10 @@ function eliminarExtensionArchivo() {
     echo "$(basename "${1%.*}")";
 }
 
-
-# mostrarOGuardarArchivoJson: Determina segun los parametros de entrada, si se muestra
+# imprimirArchivoJson: determina segun los parametros de entrada, si se muestra
 # por pantalla o si se almacena en un archivo JSON
 
-function mostrarOGuardarArchivoJson() {
+function imprimirArchivoJson() {
     if [ "$mostrarPorPantalla" = true ]; then
         echo "$jsonData";
     else
@@ -68,14 +74,34 @@ function mostrarOGuardarArchivoJson() {
     fi
 }
 
+# generarJson: toma cada clave del array vectorAciertos,
+# extrae los valores de agencia, jugada y el número de aciertos.
+# Actualiza el objeto JSON jsonData agregando los datos a la sección
+# correspondiente basada en el número de aciertos.
 
-function main() {
+function generarJson() {
+    for clave in "${!vectorAciertos[@]}"; do
+        agencia=$(echo "$clave" | cut -d '-' -f1);
+        jugada=$(echo "$clave" | cut -d '-' -f2);
+        aciertos=${vectorAciertos["$clave"]};
 
-    if ! ls "$directorioEntrada"/*.csv &>/dev/null; then
-        echo "ERROR: No se encontraron archivos CSV en el directorio especificado.";
-        exit $ERROR_DIRECTORIO_SIN_ARCHIVOS;
-    fi
+        # Al procesar el archivo se filtra por aquellas jugadas que tuvieron entre 3 y 5 aciertos,
+        # con lo cual no es necesario hacer un case para cada caso en particular,
+        # de esta forma trabajamos con un JSON de forma dinamica.
+        jsonData=$(
+            echo "$jsonData" |              \
+            jq --arg aciertos "$aciertos"   \
+            --arg agencia "$agencia"        \
+            --arg jugada "$jugada"          \
+            '.["\($aciertos)_aciertos"] += [{ agencia: $agencia, jugada: $jugada }]'
+        );
+    done
+}
 
+# obtenerNumerosGanadores: lee el archivo de los numeros ganadores,
+# cuenta las frecuencias de cada número en el archivo y guarda la lista
+# de números únicos encontrados en la variable numerosGanadores.
+function obtenerNumerosGanadores() {
     numerosGanadores=$(awk -F"," '
         {
             for (i = 1; i <= NF; i++)
@@ -85,11 +111,25 @@ function main() {
             for (num in numerosGanadores)
                 printf "%s ", num
         }
-        ' ganadores.csv)
+        ' ganadores.csv
+    )
+}
+
+# procesarArchivos: procesa archivos CSV en un directorio,
+# valida y cuenta aciertos según reglas especificadas,
+# y guarda los resultados en un archivo temporal.
+
+function procesarArchivos() {
+    # Creo archivo temporal para guardar los resultados post-procesamiento
+    archivo_temporal=$(mktemp)
 
     for archivoCSV in "$directorioEntrada"/*.csv; do
         agencia=$(eliminarExtensionArchivo "$archivoCSV")
-        awk -F"," -v agencia="$agencia" -v numerosGanadores="$numerosGanadores" -v error_num_campos="$ERROR_NUMERO_DE_CAMPOS_INCORRECTOS" -v error_num_jugado="$ERROR_NUMERO_JUGADO_INVALIDO" 'BEGIN {
+        awk -F"," \
+        -v agencia="$agencia" \
+        -v numerosGanadores="$numerosGanadores" \
+        -v error_num_campos="$ERROR_NUMERO_DE_CAMPOS_INCORRECTOS" \
+        -v error_num_jugado="$ERROR_NUMERO_JUGADO_INVALIDO" 'BEGIN {
             # Dividir la variable numerosGanadores en un array asociativo usando espacios como separador
             split(numerosGanadores, ganadoresArray, " ")
             
@@ -117,21 +157,42 @@ function main() {
                 }
 
                 if (ganadores[$i]) {
-                    
                     aciertos++
                 }
             }
 
             # Generar el registro si hay 3, 4 o 5 aciertos
             if (aciertos >= 3) {
-                print "Jugada:", $1, "Agencia:", agencia, "Aciertos:", aciertos
-                # TODO: acumular en un archivo o estructura JSON
+                print agencia "-" NR, aciertos;
             }
         }
-        ' "$archivoCSV"
+       ' "$archivoCSV" >> "$archivo_temporal"
     done
+}
 
-# mostrarOGuardarArchivoJson;
+# llenarArrayDesdeArchivoTemporal: carga los datos del archivo temporal
+# en el array vectorAciertos y luego elimina el archivo temporal.
+
+function llenarArrayDesdeArchivoTemporal() {
+    while read -r clave aciertos; do
+        vectorAciertos["$clave"]=$aciertos
+    done < "$archivo_temporal"
+
+    # Limpiar archivo temporal
+    rm "$archivo_temporal"
+}
+
+function main() {
+    if ! ls "$directorioEntrada"/*.csv &>/dev/null; then
+        echo "ERROR: No se encontraron archivos CSV en el directorio especificado.";
+        exit $ERROR_DIRECTORIO_SIN_ARCHIVOS;
+    fi
+
+    obtenerNumerosGanadores;
+    procesarArchivos;
+    llenarArrayDesdeArchivoTemporal;
+    generarJson;
+    imprimirArchivoJson;
 }
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Manejo de las opciones ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -195,13 +256,17 @@ if [ "$mostrarPorPantalla" = false ]; then
         exit $ERROR_DIRECTORIO;
     fi
 
-    # Verifico que la ruta del archivo de salida exista creando un archivo temporal
+    # Verifico que la ruta de salida exista creando un archivo temporal
     touch "$rutaArchivoSalida" 2>/dev/null;
     
-    if ! touch "$rutaArchivoSalida" 2>/dev/null; then
-        echo "ERROR: Se debe especificar una ruta válida para guardar el archivo JSON.";                
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Se debe especificar una ruta válida para guardar el archivo JSON.";         
+        ayuda;        
         exit $ERROR_RUTA_INVALIDA;     
     fi
+    
+    # Eliminar el archivo temporal si se creó
+    rm -f "$rutaArchivoSalida";
 
     # Verifico que el archivo indicado en la ruta de salida tenga como extension JSON
     extension="${rutaArchivoSalida##*.}";
