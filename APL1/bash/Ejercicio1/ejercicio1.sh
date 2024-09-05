@@ -47,12 +47,12 @@ function ayuda() {
     echo "DESCRIPCIÓN: Este script procesa archivos CSV de notas de finales y genera un archivo JSON con el resumen de las notas de los alumnos.";
     echo "OPCIONES:";
     echo "  -d, --directorio   Ruta del directorio que contiene los archivos CSV a procesar.";
-    echo "  -a, --archivo      Ruta del archivo JSON de salida (no es un directorio, es la ruta completa incluyendo el nombre del archivo).";
-    echo "  -p, --pantalla     Muestra la salida por pantalla, no genera el archivo JSON.";
+    echo "  -a, --archivo      Ruta del archivo JSON de salida (incluyendo el nombre del archivo).";
+    echo "  -p, --pantalla     Muestra la salida por pantalla en lugar de generar un archivo JSON.";
     echo "  -h, --help         Muestra este mensaje de ayuda.";
     echo "ACLARACIONES:"
-    echo "  - Para este ejercicio se utiliza el comando jq, por lo tanto, es necesaria su instalacion (sudo apt install jq)";
-    echo "  - Los parámetros -a o --archivo y -p o --pantalla no se pueden usar a la vez."
+    echo "  - Se requiere la instalación del comando jq (sudo apt install jq).";
+    echo "  - Los parámetros -a o --archivo y -p o --pantalla no se pueden usar juntas."
 }
 
 # eliminarExtensionArchivo: Los utilizo para los archivos a procesar ya que sus nombre 
