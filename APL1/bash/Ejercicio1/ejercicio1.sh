@@ -62,7 +62,7 @@ function eliminarExtensionArchivo() {
     echo "$(basename "${1%.*}")";
 }
 
-# imprimirArchivoJson: Determina segun los parametros de entrada, si se muestra
+# imprimirArchivoJson: determina segun los parametros de entrada, si se muestra
 # por pantalla o si se almacena en un archivo JSON
 
 function imprimirArchivoJson() {
@@ -74,11 +74,10 @@ function imprimirArchivoJson() {
     fi
 }
 
-# armarArchivoJson: Construye la salida en base al vector asociacito declarado (ver main).
-# Busco el dni del alumno si se encuentra en el JSON
-#   Si no se encuentra, armo la estructura para un alumno nuevo
-# Caso contrario
-#   Busco la ubicacion del DNI del alumno y agrego la materia nueva
+# generarJson: toma cada clave del array vectorAciertos,
+# extrae los valores de agencia, jugada y el número de aciertos.
+# Actualiza el objeto JSON jsonData agregando los datos a la sección
+# correspondiente basada en el número de aciertos.
 
 function generarJson() {
     for clave in "${!vectorAciertos[@]}"; do
@@ -86,20 +85,22 @@ function generarJson() {
         jugada=$(echo "$clave" | cut -d '-' -f2);
         aciertos=${vectorAciertos["$clave"]};
 
-        case $aciertos in
-            5)
-                jsonData=$(echo "$jsonData" | jq --arg agencia "$agencia" --arg jugada "$jugada" '.["5_aciertos"] += [{ agencia: $agencia, jugada: $jugada }]');
-                ;;
-            4)
-                jsonData=$(echo "$jsonData" | jq --arg agencia "$agencia" --arg jugada "$jugada" '.["4_aciertos"] += [{ agencia: $agencia, jugada: $jugada }]');
-                ;;
-            3)
-                jsonData=$(echo "$jsonData" | jq --arg agencia "$agencia" --arg jugada "$jugada" '.["3_aciertos"] += [{ agencia: $agencia, jugada: $jugada }]');
-                ;;
-        esac
+        # Al procesar el archivo se filtra por aquellas jugadas que tuvieron entre 3 y 5 aciertos,
+        # con lo cual no es necesario hacer un case para cada caso en particular,
+        # de esta forma trabajamos con un JSON de forma dinamica.
+        jsonData=$(
+            echo "$jsonData" |              \
+            jq --arg aciertos "$aciertos"   \
+            --arg agencia "$agencia"        \
+            --arg jugada "$jugada"          \
+            '.["\($aciertos)_aciertos"] += [{ agencia: $agencia, jugada: $jugada }]'
+        );
     done
 }
 
+# obtenerNumerosGanadores: lee el archivo de los numeros ganadores,
+# cuenta las frecuencias de cada número en el archivo y guarda la lista
+# de números únicos encontrados en la variable numerosGanadores.
 function obtenerNumerosGanadores() {
     numerosGanadores=$(awk -F"," '
         {
@@ -113,6 +114,10 @@ function obtenerNumerosGanadores() {
         ' ganadores.csv
     )
 }
+
+# procesarArchivos: procesa archivos CSV en un directorio,
+# valida y cuenta aciertos según reglas especificadas,
+# y guarda los resultados en un archivo temporal.
 
 function procesarArchivos() {
     # Creo archivo temporal para guardar los resultados post-procesamiento
@@ -144,8 +149,8 @@ function procesarArchivos() {
             aciertos = 0
             for (i = 2; i <= NF; i++) {
                 # Elimino el \r generado por un salto de linea en Windows (\r\n) ya que Linux no lo detecta y causa comportamientos inesperados.
-                #gsub(/\r/, "", $i)
-                print $i, ganadores[$i]
+                gsub(/\r/, "", $i)
+
                 if ($i < 0 || $i > 99) {
                     print "Error: El archivo", FILENAME, "tiene números fuera del rango permitido en la línea", NR
                     exit error_num_jugado
@@ -164,6 +169,9 @@ function procesarArchivos() {
        ' "$archivoCSV" >> "$archivo_temporal"
     done
 }
+
+# llenarArrayDesdeArchivoTemporal: carga los datos del archivo temporal
+# en el array vectorAciertos y luego elimina el archivo temporal.
 
 function llenarArrayDesdeArchivoTemporal() {
     while read -r clave aciertos; do
