@@ -62,7 +62,6 @@ function eliminarExtensionArchivo() {
     echo "$(basename "${1%.*}")";
 }
 
-
 # imprimirArchivoJson: Determina segun los parametros de entrada, si se muestra
 # por pantalla o si se almacena en un archivo JSON
 
@@ -145,8 +144,8 @@ function procesarArchivos() {
             aciertos = 0
             for (i = 2; i <= NF; i++) {
                 # Elimino el \r generado por un salto de linea en Windows (\r\n) ya que Linux no lo detecta y causa comportamientos inesperados.
-                gsub(/\r/, "", $i)
-
+                #gsub(/\r/, "", $i)
+                print $i, ganadores[$i]
                 if ($i < 0 || $i > 99) {
                     print "Error: El archivo", FILENAME, "tiene números fuera del rango permitido en la línea", NR
                     exit error_num_jugado
