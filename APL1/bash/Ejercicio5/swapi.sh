@@ -16,9 +16,26 @@
 #                                                       #
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 
+declare ID_INEXISTENTE=1;
+
 # Función para mostrar un mensaje de uso
 function ayuda() {
-    echo "Como usar este script: $0 "
+    echo "USO: $0 [-p|--people <ids_separados_por_comas>] [-f|--films <ids_separados_por_comas>]"
+    echo "       $0 --help"
+    echo
+    echo "DESCRIPCIÓN:"
+    echo "    Este script permite buscar información de personajes y películas del universo de Star Wars utilizando la API swapi.tech."
+    echo "    Los resultados se muestran por pantalla y se guardan en un archivo de caché para evitar consultas repetidas."
+    echo
+    echo "OPCIONES:"
+    echo "  -p, --people <ids_separados_por_comas>    IDs de los personajes a buscar. Puedes especificar uno o más IDs separados por comas."
+    echo "  -f, --films <ids_separados_por_comas>     IDs de las películas a buscar. Puedes especificar uno o más IDs separados por comas."
+    echo "  -h, --help                                Muestra este mensaje de ayuda."
+    echo
+    echo "ACLARACIONES:"
+    echo "  - Se requiere tener instalado el comando jq (sudo apt install jq)."
+    echo "  - Los parámetros --people y --films pueden usarse juntos para buscar múltiples personajes y películas en una sola ejecución."
+    echo "  - Si se ingresa un ID inválido o la API retorna un error, se mostrará un mensaje acorde."
     exit 0;
 }
 
@@ -38,7 +55,7 @@ function buscar_data() {
         cat "$cache_file"
     else
         response=$(curl -s "$api_url")
-
+        
         #tener siempre en cuenta, que los json pueden venir con data
         #que el jq no puede procesar como headers y demas cosas,
         #sin esta linea, no funca nada jeee
@@ -69,17 +86,17 @@ function procesar_ids() {
         # Llamar a la función fetch_data para obtener datos de la API o caché
         data=$(buscar_data "$type" "$id")
         #echo "aqui esta la data!"
-        echo "$data"
+        #echo "$data"
 
         mensaje=$(echo "$data" | jq -r .message)
         
-        if [[ "$mensaje" == "not found" ]]; then
+        if [[ "$mensaje" =~ "not found" ]]; then
             echo "El id proporcionado es un id invalido, pruebe con otro!"
             exit $ID_INEXISTENTE;
         fi    
 
         if [[ "$type" == "people" ]]; then
-            echo "$data" | jq -r '.result.properties | "\nName: \(.name)\nGender: \(.gender)\nHeight: \(.height)\nMass: \(.mass)\nBirth Year: \(.birth_year)"'
+            echo "$data" | jq --arg id "$id" -r '.result.properties | "\nId: \($id)\nName: \(.name)\nGender: \(.gender)\nHeight: \(.height)\nMass: \(.mass)\nBirth Year: \(.birth_year)"'
         elif [[ "$type" == "films" ]]; then
             echo "$data" | jq -r '.result.properties | "\nTitle: \(.title)\nEpisode id: \(.episode_id)\nRelease date: \(.release_date)\nOpening crawl: \(.opening_crawl)"'
         fi
@@ -123,7 +140,6 @@ if [[ -n "$people_ids" ]]; then
 fi
 
 if [[ -n "$film_ids" ]]; then
-    echo ""
-    echo "Películas:"
+    echo -e "\nPelículas:"
     procesar_ids "films" "$film_ids"
 fi
