@@ -25,6 +25,7 @@ function ayuda(){
     echo "OPCIONES:";
     echo "  -d, --directorio   Ruta del directorio a analizar.";
     echo "  -h, --help         Muestra este mensaje de ayuda.";
+    exit 0
 }
 
 function buscar_duplicados(){
