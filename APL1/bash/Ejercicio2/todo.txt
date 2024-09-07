@@ -1,0 +1,7 @@
+[x] agregar los parametros extendidos
+[] fijarme que la validacion de letras no la esta haciendo 100% bien
+(depende de donde este la letra tira el error o no)
+[] si el separador es opcional corregir esa validacion
+
+OBSERVACION
+-siempre que creemos un .txt ponerle un salto de linea, sino da errores!
