@@ -18,7 +18,7 @@
 declare ERROR_DIRECTORIO=1;
 
 function ayuda(){
-
+    #TODO: Implementar ayuda
 }
 
 
