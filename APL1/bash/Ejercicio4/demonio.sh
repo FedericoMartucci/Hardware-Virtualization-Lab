@@ -147,13 +147,13 @@ function existeDemonio() {
 function iniciarDemonio() {
     
     directorio=$2
-    
+
     # Esta validación permite al script manejar de distinta
     # manera la ejecución en primer y segundo plano
 	if [[ "$1" == "-nohup-" ]]; then
         salida=$3
+        
   	 	existeDemonio "$directorio"
-        "-nohup-" "$DIRECTORIO" "$SALIDA"
  		if [[ $? == 1 ]]; then
     	 	echo "ERROR: el demonio ya existe para el directorio indicado."
     	  	exit $ERROR_DEMONIO_EXISTENTE;
