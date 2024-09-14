@@ -1,1 +1,0 @@
-Archivo duplicado encontrado: ./prueba/prueba2/arch1.txt
