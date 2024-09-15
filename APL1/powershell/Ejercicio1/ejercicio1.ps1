@@ -12,6 +12,7 @@
 #       Martucci, Federico Ariel      44690247          #
 #                                                       #
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+
 <#
 .SYNOPSIS
 Script para resumir la información de aciertos de los archivos CSV en un único archivo JSON.
