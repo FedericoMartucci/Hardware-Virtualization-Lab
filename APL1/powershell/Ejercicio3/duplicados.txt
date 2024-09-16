@@ -1,0 +1,15 @@
+ejemplo1.sh
+	 /home/tomy/Hardware-Virtualization-Lab/APL1/powershell/Ejercicio3/ejemplo1/ejemplo1.sh
+	 /home/tomy/Hardware-Virtualization-Lab/APL1/powershell/Ejercicio3/ejemplo2/ejemplo1.sh
+
+
+ejemplo1.sh
+	 /home/tomy/Hardware-Virtualization-Lab/APL1/powershell/Ejercicio3/ejemplo1/ejemplo3/ejemplo1.sh
+	 /home/tomy/Hardware-Virtualization-Lab/APL1/powershell/Ejercicio3/ejemplo1/ejemplo3/ejemplo4/ejemplo1.sh
+
+
+ejemplo2.sh
+	 /home/tomy/Hardware-Virtualization-Lab/APL1/powershell/Ejercicio3/ejemplo1/ejemplo3/ejemplo4/ejemplo2.sh
+	 /home/tomy/Hardware-Virtualization-Lab/APL1/powershell/Ejercicio3/ejemplo2/ejemplo2.sh
+
+
