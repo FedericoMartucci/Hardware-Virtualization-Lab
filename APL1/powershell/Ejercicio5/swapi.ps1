@@ -2,9 +2,9 @@
 #               Virtualizacion de Hardware              #
 #                                                       #
 #   APL1                                                #
-#   Nro ejercicio: 2                                    #
+#   Nro ejercicio: 5                                    #
 #   Nro entrega: 1                                      #
-#   Nombre del script: ejercicio2.ps1                   #
+#   Nombre del script: swapi.ps1                        #
 #                                                       #
 #   Integrantes:                                        #
 #                                                       #
