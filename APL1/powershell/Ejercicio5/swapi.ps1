@@ -48,7 +48,7 @@ $Script:ERROR_PARAMETROS_FALTANTES=1
 
 # Validar que al menos un parámetro fue proporcionado
 if (-not $people -and -not $film) {
-    Write-Host "Error: Debe ingresar al menos un ID para 'people' o 'film'."
+    Write-Error "Error: Debe ingresar al menos un ID para 'people' o 'film'."
     exit $ERROR_PARAMETROS_FALTANTES
 }
 
@@ -86,14 +86,16 @@ function Get-FromAPI {
         #Aqui se realiza el llamado a la API
         $response = Invoke-RestMethod -Uri $api_url  -Method Get
         if ($response.message -contains "not found") {
-            Write-Host "No se encontró información para $type con ID $id"
+            Write-Output "No se encontró información para $type con ID $id"
             return $null
         } else {
+
+
             Save-ToCache $id $type ($response.result | ConvertTo-Json)
             return $response.result
         }
     } catch {
-        Write-Host "Error al consultar la API para $type con ID ${id} `n"
+        Write-Error "Error al consultar la API para $type con ID ${id}: $($_.Exception.Message)"
         return $null
     }
 }
@@ -104,13 +106,13 @@ function Show-People {
     foreach ($id in $peopleIds) {
         $data = Get-FromAPI $id 'people'
         if ($data) {
-            Write-Host "Id: $($data.uid)"
-            Write-Host "Name: $($data.properties.name)"
-            Write-Host "Gender: $($data.properties.gender)"
-            Write-Host "Height: $($data.properties.height)"
-            Write-Host "Mass: $($data.properties.mass)"
-            Write-Host "Birth Year: $($data.properties.birth_year)"
-            Write-Host ""
+            Write-Output "Id: $($data.uid)"
+            Write-Output "Name: $($data.properties.name)"
+            Write-Output "Gender: $($data.properties.gender)"
+            Write-Output "Height: $($data.properties.height)"
+            Write-Output "Mass: $($data.properties.mass)"
+            Write-Output "Birth Year: $($data.properties.birth_year)"
+            Write-Output ""
         }
     }
 }
@@ -121,22 +123,22 @@ function Show-Films {
     foreach ($id in $filmIds) {
         $data = Get-FromAPI $id 'films'
         if ($data) {
-            Write-Host "Title: $($data.properties.title)"
-            Write-Host "Episode id: $($data.properties.episode_id)"
-            Write-Host "Release date: $($data.properties.release_date)"
-            Write-Host "Opening crawl: $($data.properties.opening_crawl)"
-            Write-Host ""
+            Write-Output "Title: $($data.properties.title)"
+            Write-Output "Episode id: $($data.properties.episode_id)"
+            Write-Output "Release date: $($data.properties.release_date)"
+            Write-Output "Opening crawl: $($data.properties.opening_crawl)"
+            Write-Output ""
         }
     }
 }
 
 # Procesar parámetros
 if ($people) {
-    Write-Host "Personajes:"
+    Write-Output "Personajes:"
     Show-People $people
 }
 
 if ($film) {
-    Write-Host "Peliculas:"
+    Write-Output "Peliculas:"
     Show-Films $film
 }
