@@ -58,12 +58,6 @@ function producto_escalar() {
   local separador=$3
   local salida=$4
 
-  #while IFS= read -r linea; do
-  #  echo "$linea"
-  # nueva_linea=$(echo "$linea" | awk -F"$separador" -v escalar="$escalar" '{for(i=1;i<=NF;i++)$i=$i*escalar}1' OFS="$separador")
-  #  echo "$nueva_linea" >> "$salida"
-  #done < "$archivo"
-
   awk -F"$separador" -v escalar="$escalar" '{for(i=1;i<=NF;i++)$i=$i*escalar}1' OFS="$separador" "$archivo" > "$salida" 
 
 }
