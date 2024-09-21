@@ -1,0 +1,20 @@
+{
+  "properties": {
+    "height": "97",
+    "mass": "32",
+    "hair_color": "n/a",
+    "skin_color": "white, red",
+    "eye_color": "red",
+    "birth_year": "unknown",
+    "gender": "n/a",
+    "created": "2024-09-21T04:00:39.935Z",
+    "edited": "2024-09-21T04:00:39.935Z",
+    "name": "R5-D4",
+    "homeworld": "https://www.swapi.tech/api/planets/1",
+    "url": "https://www.swapi.tech/api/people/8"
+  },
+  "description": "A person within the Star Wars universe",
+  "_id": "5f63a36eee9fd7000499be49",
+  "uid": "8",
+  "__v": 0
+}

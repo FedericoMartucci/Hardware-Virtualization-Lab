@@ -1,0 +1,20 @@
+{
+  "properties": {
+    "height": "150",
+    "mass": "49",
+    "hair_color": "brown",
+    "skin_color": "light",
+    "eye_color": "brown",
+    "birth_year": "19BBY",
+    "gender": "female",
+    "created": "2024-09-21T04:00:39.935Z",
+    "edited": "2024-09-21T04:00:39.935Z",
+    "name": "Leia Organa",
+    "homeworld": "https://www.swapi.tech/api/planets/2",
+    "url": "https://www.swapi.tech/api/people/5"
+  },
+  "description": "A person within the Star Wars universe",
+  "_id": "5f63a36eee9fd7000499be46",
+  "uid": "5",
+  "__v": 0
+}

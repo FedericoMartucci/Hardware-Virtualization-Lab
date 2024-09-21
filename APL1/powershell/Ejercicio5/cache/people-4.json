@@ -1,0 +1,20 @@
+{
+  "properties": {
+    "height": "202",
+    "mass": "136",
+    "hair_color": "none",
+    "skin_color": "white",
+    "eye_color": "yellow",
+    "birth_year": "41.9BBY",
+    "gender": "male",
+    "created": "2024-09-21T04:00:39.935Z",
+    "edited": "2024-09-21T04:00:39.935Z",
+    "name": "Darth Vader",
+    "homeworld": "https://www.swapi.tech/api/planets/1",
+    "url": "https://www.swapi.tech/api/people/4"
+  },
+  "description": "A person within the Star Wars universe",
+  "_id": "5f63a36eee9fd7000499be45",
+  "uid": "4",
+  "__v": 0
+}

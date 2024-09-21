@@ -44,7 +44,7 @@ param (
 )
 
 $Script:ERROR_PARAMETROS_FALTANTES=1
-
+$Script:ERROR_API=2
 
 # Validar que al menos un parámetro fue proporcionado
 if (-not $people -and -not $film) {
@@ -56,6 +56,7 @@ if (-not $people -and -not $film) {
 function Save-ToCache {
     param ($id, $type, $data)
     $cachePath = "$PSScriptRoot/cache/$type-$id.json"
+
     if (-not (Test-Path "$PSScriptRoot/cache")) {
         New-Item -Path "$PSScriptRoot/cache" -ItemType Directory | Out-Null
     }
@@ -65,6 +66,7 @@ function Save-ToCache {
 function Get-FromCache {
     param ($id, $type)
     $cachePath = "$PSScriptRoot/cache/$type-$id.json"
+
     if (Test-Path $cachePath) {
         return Get-Content $cachePath -Raw | ConvertFrom-Json
     } else {
@@ -86,11 +88,9 @@ function Get-FromAPI {
         #Aqui se realiza el llamado a la API
         $response = Invoke-RestMethod -Uri $api_url  -Method Get
         if ($response.message -contains "not found") {
-            Write-Output "No se encontró información para $type con ID $id"
+            Write-Output "No se encontró información para $type con ID $id."
             return $null
         } else {
-
-
             Save-ToCache $id $type ($response.result | ConvertTo-Json)
             return $response.result
         }

@@ -1,0 +1,20 @@
+{
+  "properties": {
+    "height": "180",
+    "mass": "unknown",
+    "hair_color": "auburn, grey",
+    "skin_color": "fair",
+    "eye_color": "blue",
+    "birth_year": "64BBY",
+    "gender": "male",
+    "created": "2024-09-21T04:00:39.935Z",
+    "edited": "2024-09-21T04:00:39.935Z",
+    "name": "Wilhuff Tarkin",
+    "homeworld": "https://www.swapi.tech/api/planets/21",
+    "url": "https://www.swapi.tech/api/people/12"
+  },
+  "description": "A person within the Star Wars universe",
+  "_id": "5f63a36eee9fd7000499be4d",
+  "uid": "12",
+  "__v": 0
+}
