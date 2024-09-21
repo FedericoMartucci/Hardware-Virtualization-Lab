@@ -44,14 +44,12 @@ param (
 )
 
 $Script:ERROR_PARAMETROS_FALTANTES=1
-$Script:ERROR_API=2
 
 # Validar que al menos un parámetro fue proporcionado
 if (-not $people -and -not $film) {
     Write-Error "Error: Debe ingresar al menos un ID para 'people' o 'film'."
     exit $ERROR_PARAMETROS_FALTANTES
 }
-
 
 function Save-ToCache {
     param ($id, $type, $data)
@@ -73,7 +71,6 @@ function Get-FromCache {
         return $null
     }
 }
-
 
 function Get-FromAPI {
     param ($id, $type)
