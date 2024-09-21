@@ -40,7 +40,11 @@ param (
     [ValidateNotNullOrEmpty()]
     [string]$Directorio
 )
+
+# Exit codes
 $Script:ERROR_DIRECTORIO_INVALIDO=1
+$Script:ERROR_PERMISO_DENEGADO = 2
+$Script:ERROR_PROCESO_ARCHIVO = 3
 
 # Validar que el directorio exista
 if (-not (Test-Path -Path $Directorio -PathType Container)) {
@@ -64,6 +68,15 @@ try {
             }
         }
     }
-} catch {
+} catch [System.UnauthorizedAccessException] {
+    # Error de permisos
+    Write-Error "Permiso denegado al intentar acceder a uno de los directorios o archivos: $($_.Exception.Message)"
+    exit $ERROR_PERMISO_DENEGADO
+} catch [System.Exception] {
+    # Error general al procesar archivos
     Write-Error "Ocurrió un error al procesar los archivos: $($_.Exception.Message)"
+    exit $ERROR_PROCESO_ARCHIVO
 }
+
+# Salir con código de éxito 0
+exit 0
