@@ -17,10 +17,31 @@
 
 
 function ayuda() {
-  echo "Para ejecutar el script: $0 -m \"archivo_matriz\" -p \"escalar\" -t -s \"separador"\"
-  echo "El orden de los parametros no es estricto!"
-  exit 0
+    echo "USO: $0 [-m|--matriz <archivo_matriz>] [-p|--producto <valor_escalar>] [-t|--trasponer] [-s|--separador <caracter_separador>]";
+    echo "DESCRIPCIÓN: Este script realiza operaciones de producto escalar o trasposición sobre una matriz leída desde un archivo de texto.";
+    echo "El archivo debe contener una matriz válida con valores numéricos (incluyendo decimales y negativos).";
+    echo "El formato del archivo es el siguiente, donde cada número está separado por un separador especificado por el usuario:";
+    echo "    Ejemplo de matriz:";
+    echo "    0|1|2";
+    echo "    1|1|1";
+    echo "    -3|-3|-1";
+    echo "";
+    echo "OPCIONES:";
+    echo "  -m, --matriz      Ruta del archivo de la matriz a procesar.";
+    echo "  -p, --producto    Valor entero para realizar el producto escalar con la matriz.";
+    echo "                    No puede usarse junto con -t (trasponer).";
+    echo "  -t, --trasponer   Indica que se debe realizar la operación de trasposición de la matriz.";
+    echo "                    No puede usarse junto con -p (producto escalar).";
+    echo "  -s, --separador   Carácter separador de columnas en el archivo de la matriz.";
+    echo "                    El separador no puede ser un número ni el símbolo menos '-'.";
+    echo "  -h, --help        Muestra este mensaje de ayuda.";
+    echo "";
+    echo "ACLARACIONES:";
+    echo "  - El archivo de matriz debe contener el mismo número de columnas en cada fila.";
+    echo "  - El resultado se guardará en un archivo llamado 'salida.nombreArchivoEntrada' en el mismo directorio.";
+    exit 0
 }
+
 
 # Validar que la matriz sea válida
 function validar_matriz() {
