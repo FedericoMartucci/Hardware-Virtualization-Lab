@@ -165,7 +165,12 @@ if [[ "$separador" =~ [0-9\-] ]]; then
 fi
 
 # Validar matriz
-validar_matriz "$archivo_matriz" "$separador" || exit 1
+validar_matriz "$archivo_matriz" "$separador"
+status=$?
+if [ $status -ne 0 ]; then
+  echo "Error en la validación de la matriz. Código de error: $status"
+  exit $status
+fi
 
 # Generar el nombre del archivo de salida
 nombre_archivo=$(basename "$archivo_matriz")
