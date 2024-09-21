@@ -49,7 +49,7 @@ if (-not (Test-Path -Path $Directorio -PathType Container)) {
 }
 
 try {
-    $archivos = Get-ChildItem -Path $Directorio -Recurse -File
+    $archivos = Get-ChildItem -Path $Directorio -Recurse -File -ErrorAction Stop
 
     #Se crea un grupo por nombre y tamaño
     $duplicados = $archivos | Group-Object Name, Length | Where-Object { $_.Count -gt 1 }
@@ -65,5 +65,5 @@ try {
         }
     }
 } catch {
-    Write-Error "Ocurrió un error al procesar los archivos: $_"
+    Write-Error "Ocurrió un error al procesar los archivos: $($_.Exception.Message)"
 }
