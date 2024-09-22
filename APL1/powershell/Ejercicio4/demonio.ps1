@@ -65,14 +65,9 @@ param (
 # Códigos de error
 $Script:ERROR_PARAMETROS_INVALIDOS = 1
 $Script:ERROR_ARGUMENTO_DESCONOCIDO = 2
-$Script:ERROR_DIRECTORIO = 3
-$Script:ERROR_ARGUMENTOS_FALTANTES = 4
+$Script:ERROR_DIRECTORIO_INVALIDO = 3
+$Script:ERROR_PARAMETROS_FALTANTES = 4
 $Script:ERROR_DEMONIO_EXISTENTE = 5
-
-# Exit codes
-$Script:ERROR_DIRECTORIO_INVALIDO=1
-$Script:ERROR_PERMISO_DENEGADO = 2
-$Script:ERROR_PROCESO_ARCHIVO = 3
 
 # Validar que el directorio exista
 if (-not (Test-Path -Path $Directorio -PathType Container)) {
@@ -80,9 +75,23 @@ if (-not (Test-Path -Path $Directorio -PathType Container)) {
     exit $ERROR_DIRECTORIO_INVALIDO
 }
 
-# Validar que al menos un parámetro de salida o de kill
+# Validar que al menos uno de los parámetros -Salida o -Kill esté presente
 if (-not $Salida -and -not $Kill) {
-    Write-Error "Debe ingresar una salida válida o kill."
+    Write-Error "Debe ingresar una opción válida: -Salida o -Kill."
     exit $ERROR_PARAMETROS_FALTANTES
 }
+
+# Validar exclusividad mutua: no se puede usar -Salida y -Kill al mismo tiempo
+if ($Salida -and $Kill) {
+    Write-Error "Los parámetros -Salida y -Kill no pueden ser usados simultáneamente."
+    exit $ERROR_PARAMETROS_INVALIDOS
+}
+
+# Validar que el directorio de salida exista cuando se usa -Salida
+if ($Salida -and (-not (Test-Path -Path $Salida -PathType Container))) {
+    Write-Error "El directorio de salida especificado no existe o no es válido: $Salida"
+    exit $ERROR_DIRECTORIO_INVALIDO
+}
+
+
 
