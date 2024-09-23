@@ -133,11 +133,11 @@ function CrearMonitor {
     )
 
     # Crear el FileSystemWatcher
-    $watcher = New-Object -TypeName System.IO.FileSystemWatcher -Property @{
-        Path = $Directorio
-        Filter =  "*.*"
-        IncludeSubdirectories =  $true
-      }
+    $watcher = New-Object System.IO.FileSystemWatcher
+    $watcher.Path = $Directorio
+    $watcher.Filter = "*.*"  # Monitorea todos los archivos
+    $watcher.IncludeSubdirectories = $true
+    $watcher.EnableRaisingEvents = $true
     
     # Acción al detectar cambio
     $action = {
@@ -153,7 +153,6 @@ function CrearMonitor {
         # cuándo ocurrió el cambio:
         $Timestamp = $event.TimeGenerated
 
-        $global:all = $details
         $ev = ""
         switch ($ChangeType)
         {
@@ -164,46 +163,43 @@ function CrearMonitor {
             # Cualquier tipo de cambio no controlado:
             default   {}
         }
-        $FullPath = $all.FullPath
-        $Timestamp = $event.TimeGenerated
+        $FullPath = $details.FullPath
 
         Monitorear "$FullPath" $ev $Timestamp
     }
 
-    $watcher.EnableRaisingEvents = $true
 
-    while ($true)
-    {
-        $handlers = . {
-            Register-ObjectEvent -InputObject $watcher -EventName Changed -Action $action -SourceIdentifier "ChangedEvent" 
-            Register-ObjectEvent -InputObject $watcher -EventName Created -Action $action -SourceIdentifier "CreatedEvent"
-            Register-ObjectEvent -InputObject $watcher -EventName Renamed -Action $action -SourceIdentifier "RenamedEvent"
+    Register-ObjectEvent -InputObject $watcher -EventName Changed -Action $action -SourceIdentifier "ChangedEvent" 
+    Register-ObjectEvent -InputObject $watcher -EventName Created -Action $action -SourceIdentifier "CreatedEvent"
+    Register-ObjectEvent -InputObject $watcher -EventName Renamed -Action $action -SourceIdentifier "RenamedEvent"
+
+    # Crear el Job en segundo plano
+    Start-Job -ScriptBlock {
+        while ($true) {
+            Start-Sleep -Seconds 1
         }
+    }  
+    # $handlers | ForEach-Object {
+    #     Unregister-Event -SourceIdentifier $_.Name
+    # }
 
-        Wait-Event -Timeout 1
-        
-        $handlers | ForEach-Object {
-            Unregister-Event -SourceIdentifier $_.Name
-        }
-    } 
-
-    # stop monitoring
-    $watcher.EnableRaisingEvents = $false
+    # # stop monitoring
+    # $watcher.EnableRaisingEvents = $false
     
-    # remove the event handlers
-    $handlers | ForEach-Object {
-        Unregister-Event -SourceIdentifier $_.Name
-    }
+    # # remove the event handlers
+    # $handlers | ForEach-Object {
+    #     Unregister-Event -SourceIdentifier $_.Name
+    # }
     
-    # event handlers are technically implemented as a special kind
-    # of background job, so remove the jobs now:
-    $handlers | Remove-Job
+    # # event handlers are technically implemented as a special kind
+    # # of background job, so remove the jobs now:
+    # $handlers | Remove-Job
     
-    # properly dispose the FileSystemWatcher:
-    $watcher.Dispose()
+    # # properly dispose the FileSystemWatcher:
+    # $watcher.Dispose()
     
-    Write-Warning "Event Handler disabled, monitoring ends."
- 
+    # Write-Warning "Event Handler disabled, monitoring ends."
+    Write-Host "Monitoreo iniciado en segundo plano."
 }
 
 function IniciarDemonio {
@@ -221,9 +217,9 @@ function IniciarDemonio {
         $pidDelArchivo = Get-Content $pidFile
         
         # Comprobar si el proceso con ese PID está corriendo
-        if (Get-Process -Id $pidDelArchivo -ErrorAction SilentlyContinue) {
+        if (Get-Job -Id $pidDelArchivo -ErrorAction SilentlyContinue) {
             Write-Host "El demonio ya existe para el directorio '$Directorio' con PID $pidDelArchivo." -ForegroundColor Red
-            exit $ERROR_DEMONIO_EXISTENTE
+            exit $ERROR_DEMONIO_EXISTENTE # Salir con código de error si ya hay un demonio corriendo
         } else {
             # Si el proceso ya no existe, eliminar el archivo PID
             Remove-Item $pidFile
@@ -231,44 +227,51 @@ function IniciarDemonio {
     }
 
     # Ejecutar el script en segundo plano
-    # $job = Start-Job -ArgumentList $Directorio, $Salida -ScriptBlock {
+    $job = Start-Job -ArgumentList $Directorio, $Salida -ScriptBlock {
+        param ($Directorio, $Salida)
+
         CrearMonitor -Directorio $Directorio -Salida $Salida
-    # }
+
+        # Mantener el demonio vivo
+        while ($true) {
+            Start-Sleep -Seconds 1  # Evitar el consumo excesivo de CPU
+        }
+    }
 
     # Guardar el PID del trabajo en segundo plano
-    # $jobPid = (Get-Process -Id $job.Id).Id
-    # Set-Content -Path $pidFile -Value $jobPid
+    $jobPid = $job.Id
+    Set-Content -Path $pidFile -Value $jobPid
 
     Write-Host "El demonio se ha iniciado en segundo plano con PID $jobPid." -ForegroundColor Green
 }
 
-function EliminarDemonio {
+function FinalizarDemonio {
     param (
         [string]$Directorio
     )
 
-    # Buscar el archivo PID
-    $pidFile = "$Directorio\monitor-$($Directorio -replace '[\\:\/]', '_').pid"
+    # Definir la ruta del archivo PID
+    $pidFile = "$Directorio\monitor-$([System.IO.Path]::GetFileName($Directorio)).pid"
+
+    # Verificar si el archivo PID existe
     if (Test-Path $pidFile) {
+        # Leer el PID almacenado en el archivo
         $pidDelArchivo = Get-Content $pidFile
-        try {
-            Stop-Process -Id $pidDelArchivo -Force
-            Write-Host "El demonio para el directorio '$Directorio' ha sido detenido."
-            Remove-Item $pidFile
-        }
-        catch {
-            Write-Host "No se pudo detener el proceso con PID $pidDelArchivo. Es posible que ya haya terminado."
-            Remove-Item $pidFile
-        }
-    }
-    else {
-        Write-Warning "No se encontró un demonio en ejecución para el directorio '$Directorio'."
+
+        # Detener el proceso del trabajo en segundo plano
+        Stop-Job -Id $pidDelArchivo
+        Remove-Job -Id $pidDelArchivo
+        Remove-Item $pidFile
+
+        Write-Host "El demonio ha sido detenido." -ForegroundColor Yellow
+    } else {
+        Write-Host "No se encontró ningún demonio activo para el directorio '$Directorio'." -ForegroundColor Red
     }
 }
 
 # Procesar parámetros
 if ($Kill) {
-    EliminarDemonio -Directorio $Directorio
+    FinalizarDemonio -Directorio $Directorio
 } else {
     IniciarDemonio -Directorio $Directorio -Salida $Salida
 }
