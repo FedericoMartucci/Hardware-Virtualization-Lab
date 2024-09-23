@@ -1,0 +1,1 @@
+INFO | Archivo duplicado encontrado: monitor-prueba.pid

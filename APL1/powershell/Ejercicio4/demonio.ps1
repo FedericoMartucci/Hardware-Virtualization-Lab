@@ -68,8 +68,6 @@ $Script:ERROR_ARGUMENTO_DESCONOCIDO = 2
 $Script:ERROR_DIRECTORIO_INVALIDO = 3
 $Script:ERROR_PARAMETROS_FALTANTES = 4
 $Script:ERROR_DEMONIO_EXISTENTE = 5
-# $Script:ERROR_PERMISOS_LECTURA = 6
-# $Script:ERROR_PERMISOS_ESCRITURA = 7
 
 # Validar que el directorio exista
 if (-not (Test-Path -Path $Directorio -PathType Container)) {
@@ -107,14 +105,14 @@ function Global:Monitorear($FullPath, $accion, $Fecha) {
         # Buscar archivos duplicados por nombre y tamaño
         $duplicates = Get-ChildItem -Path $Directorio -Recurse | Where-Object { $_.Name -eq $name -and $_.Length -eq $size }
 
-        if ($duplicates.Count -gt 0) {
+        if ($duplicates.Count -gt 1) {
             $existingLog = Get-Content $logPath
             if (-not $existingLog) {
                 Add-Content -Path $logPath -Value "INFO | Archivo duplicado encontrado: $name"
             }
             
             $zipFile = "$Salida\$fechaMonitoreo.zip" 
-            Compress-Archive -Path $duplicates.FullName -DestinationPath $zipFile 
+            Compress-Archive -Path $duplicates.FullName -DestinationPath $zipFile -Force
         }
     }
     if($accion -eq "RENAMED"){
@@ -133,7 +131,7 @@ function CrearMonitor {
     )
 
     # Crear el FileSystemWatcher
-    $watcher = New-Object System.IO.FileSystemWatcher
+    $global:watcher = New-Object System.IO.FileSystemWatcher
     $watcher.Path = $Directorio
     $watcher.Filter = "*.*"  # Monitorea todos los archivos
     $watcher.IncludeSubdirectories = $true
@@ -163,43 +161,27 @@ function CrearMonitor {
             # Cualquier tipo de cambio no controlado:
             default   {}
         }
-        $FullPath = $details.FullPath
 
         Monitorear "$FullPath" $ev $Timestamp
     }
 
-
-    Register-ObjectEvent -InputObject $watcher -EventName Changed -Action $action -SourceIdentifier "ChangedEvent" 
-    Register-ObjectEvent -InputObject $watcher -EventName Created -Action $action -SourceIdentifier "CreatedEvent"
-    Register-ObjectEvent -InputObject $watcher -EventName Renamed -Action $action -SourceIdentifier "RenamedEvent"
-
-    # Crear el Job en segundo plano
-    Start-Job -ScriptBlock {
+    $global:handlers = . {
+        Register-ObjectEvent -InputObject $watcher -EventName Changed -Action $action -SourceIdentifier "ChangedEvent" 
+        Register-ObjectEvent -InputObject $watcher -EventName Created -Action $action -SourceIdentifier "CreatedEvent"
+        Register-ObjectEvent -InputObject $watcher -EventName Renamed -Action $action -SourceIdentifier "RenamedEvent"
+    }
+    $job = Start-Job -ScriptBlock {
+        # Mantener el demonio vivo
         while ($true) {
-            Start-Sleep -Seconds 1
+            Start-Sleep -Seconds 1  # Evitar el consumo excesivo de CPU
         }
-    }  
-    # $handlers | ForEach-Object {
-    #     Unregister-Event -SourceIdentifier $_.Name
-    # }
+    }  # No mostrar la salida del Job en la consola
 
-    # # stop monitoring
-    # $watcher.EnableRaisingEvents = $false
-    
-    # # remove the event handlers
-    # $handlers | ForEach-Object {
-    #     Unregister-Event -SourceIdentifier $_.Name
-    # }
-    
-    # # event handlers are technically implemented as a special kind
-    # # of background job, so remove the jobs now:
-    # $handlers | Remove-Job
-    
-    # # properly dispose the FileSystemWatcher:
-    # $watcher.Dispose()
-    
-    # Write-Warning "Event Handler disabled, monitoring ends."
-    Write-Host "Monitoreo iniciado en segundo plano."
+    $jobId = $job.Id
+    Write-Host $pidFile
+    Set-Content -Path $pidFile -Value $jobId
+
+    Write-Host "El demonio se ha iniciado en segundo plano con ID $jobId." -ForegroundColor Green
 }
 
 function IniciarDemonio {
@@ -209,7 +191,7 @@ function IniciarDemonio {
     )
 
     # Definir la ruta del archivo PID
-    $pidFile = "$Directorio\monitor-$([System.IO.Path]::GetFileName($Directorio)).pid"
+    $pidFile = "$PSScriptRoot\pid-monitor.pid"
 
     # Verificar si el archivo PID ya existe
     if (Test-Path $pidFile) {
@@ -218,7 +200,7 @@ function IniciarDemonio {
         
         # Comprobar si el proceso con ese PID está corriendo
         if (Get-Job -Id $pidDelArchivo -ErrorAction SilentlyContinue) {
-            Write-Host "El demonio ya existe para el directorio '$Directorio' con PID $pidDelArchivo." -ForegroundColor Red
+            Write-Host "El demonio ya existe para el directorio '$Directorio' con ID $pidDelArchivo." -ForegroundColor Red
             exit $ERROR_DEMONIO_EXISTENTE # Salir con código de error si ya hay un demonio corriendo
         } else {
             # Si el proceso ya no existe, eliminar el archivo PID
@@ -227,22 +209,7 @@ function IniciarDemonio {
     }
 
     # Ejecutar el script en segundo plano
-    $job = Start-Job -ArgumentList $Directorio, $Salida -ScriptBlock {
-        param ($Directorio, $Salida)
-
-        CrearMonitor -Directorio $Directorio -Salida $Salida
-
-        # Mantener el demonio vivo
-        while ($true) {
-            Start-Sleep -Seconds 1  # Evitar el consumo excesivo de CPU
-        }
-    }
-
-    # Guardar el PID del trabajo en segundo plano
-    $jobPid = $job.Id
-    Set-Content -Path $pidFile -Value $jobPid
-
-    Write-Host "El demonio se ha iniciado en segundo plano con PID $jobPid." -ForegroundColor Green
+    CrearMonitor -Directorio $Directorio -Salida $Salida
 }
 
 function FinalizarDemonio {
@@ -251,7 +218,7 @@ function FinalizarDemonio {
     )
 
     # Definir la ruta del archivo PID
-    $pidFile = "$Directorio\monitor-$([System.IO.Path]::GetFileName($Directorio)).pid"
+    $pidFile = "$PSScriptRoot\pid-monitor.pid"
 
     # Verificar si el archivo PID existe
     if (Test-Path $pidFile) {
@@ -260,9 +227,20 @@ function FinalizarDemonio {
 
         # Detener el proceso del trabajo en segundo plano
         Stop-Job -Id $pidDelArchivo
+        $handlers | ForEach-Object {
+            Unregister-Event -SourceIdentifier $_.Name
+        }
         Remove-Job -Id $pidDelArchivo
         Remove-Item $pidFile
-
+        
+        # event handlers are technically implemented as a special kind
+        # of background job, so remove the jobs now:
+        $handlers | Remove-Job
+        
+        # properly dispose the FileSystemWatcher:
+        $watcher.Dispose()
+        
+        # Write-Warning "Event Handler disabled, monitoring ends."
         Write-Host "El demonio ha sido detenido." -ForegroundColor Yellow
     } else {
         Write-Host "No se encontró ningún demonio activo para el directorio '$Directorio'." -ForegroundColor Red
