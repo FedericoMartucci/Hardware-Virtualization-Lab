@@ -96,35 +96,30 @@ if ($Salida -and (-not (Test-Path -Path $Salida -PathType Container))) {
 }
 
 function Global:Monitorear($FullPath, $accion, $Fecha) {
-    $var2=Test-Path -Path "$FullPath" -PathType Leaf -ErrorAction Ignore
-    if($var2 -eq $true){
-        #establecer fecha
-        $fechaMonitoreo=Get-Date -Format "yyyyMMdd-HHmmss"
-        #crear archivo log
-        $log="$Salida\$fechaMonitoreo.txt"
-        New-Item -ItemType File -Path "$log"
-        if($accion -eq "CHANGED"){
-            #Añadimos el reporte al archivo log
-            Add-Content "$log" "$Fecha $FullPath ha sido modificado"
-           # Buscar archivos duplicados por nombre y tamaño
-            $duplicates = Get-ChildItem -Path $using:Directorio -Recurse |
-            Where-Object { $_.Name -eq $name -and $_.Length -eq $size -and $_.FullName -ne $file }
+    $fechaMonitoreo=Get-Date -Date $Fecha -Format "yyyyMMdd-HHmmss"
+    $logPath = "$Salida\log-$fechaMonitoreo.txt"
+    New-Item -ItemType File -Path "$log"
+    if($accion -eq "CHANGED"){
+        #Añadimos el reporte al archivo log
+        $name = [System.IO.Path]::GetFileName($FullPath)
+        $size = (Get-Item $FullPath).length
 
-            if ($duplicates.Count -gt 0) {
-                $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-                $logPath = "$using:Salida\log-$timestamp.txt"
-                Add-Content -Path $logPath -Value "INFO | Archivo duplicado encontrado: $file"
-                
-                $zipFile = "$using:Salida\$timestamp.zip"
-                Compress-Archive -Path $file, $duplicates.FullName -DestinationPath $zipFile
-            }
+        # Buscar archivos duplicados por nombre y tamaño
+        $duplicates = Get-ChildItem -Path $Directorio -Recurse |
+            Where-Object { $_.Name -eq $name -and $_.Length -eq $size }
+        
+        if ($duplicates.Count -gt 0) {
+            Add-Content -Path $logPath -Value "INFO | Archivo duplicado encontrado: $file"
+            
+            $zipFile = "$Salida\$fechaMonitoreo.zip"
+            Compress-Archive -Path $FullPath, $duplicates.FullName -DestinationPath $zipFile
         }
-        if($accion -eq "RENAMED"){
-           Add-Content "$log" "$Fecha $FullPath ha sido renombrado"
-        }
-        if($accion -eq "CREATED"){
-           Add-Content "$log" "$Fecha $FullPath ha sido creado"
-        }
+    }
+    if($accion -eq "RENAMED"){
+        Add-Content "$log" "$Fecha $FullPath ha sido renombrado"
+    }
+    if($accion -eq "CREATED"){
+        Add-Content "$log" "$Fecha $FullPath ha sido creado"
     }
 }
 
@@ -139,7 +134,6 @@ function CrearMonitor {
         Path = $Directorio
         Filter =  "*.*"
         IncludeSubdirectories =  $true
-        EnableRaisingEvents = $true
       }
     
     # Acción al detectar cambio
@@ -162,26 +156,51 @@ function CrearMonitor {
         {
             "Changed"  { $ev="CHANGED" }
             "Created"  { $ev="CREATED" }
-            "Renamed"  { $ev="RENAMED" }  
-            # cualquier superficie de tipo de cambio no controlada aquí:
-            default   { Write-Host "HOLA"}
+            "Renamed"  { $ev="RENAMED" }
+            
+            # Cualquier tipo de cambio no controlado:
+            default   {}
         }
         $FullPath = $all.FullPath
         $Timestamp = $event.TimeGenerated
-        Write-Host $FullPath
-        # Write-Host $ev
-        # Write-Host $Timestamp
+
         Monitorear "$FullPath" $ev $Timestamp
     }
 
-    Register-ObjectEvent -InputObject $watcher -EventName Changed -Action $action 
-    Register-ObjectEvent -InputObject $watcher -EventName Created -Action $action
-    Register-ObjectEvent -InputObject $watcher -EventName Renamed -Action $action 
+    $watcher.EnableRaisingEvents = $true
 
-    while ($true) {
-        Write-Host $Directorio
-        Start-Sleep -Seconds 1
+    while ($true)
+    {
+        $handlers = . {
+            Register-ObjectEvent -InputObject $watcher -EventName Changed -Action $action -SourceIdentifier "ChangedEvent" 
+            Register-ObjectEvent -InputObject $watcher -EventName Created -Action $action -SourceIdentifier "CreatedEvent"
+            Register-ObjectEvent -InputObject $watcher -EventName Renamed -Action $action -SourceIdentifier "RenamedEvent"
+        }
+
+        Wait-Event -Timeout 1
+        
+        $handlers | ForEach-Object {
+            Unregister-Event -SourceIdentifier $_.Name
+        }
+    } 
+
+    # stop monitoring
+    $watcher.EnableRaisingEvents = $false
+    
+    # remove the event handlers
+    $handlers | ForEach-Object {
+        Unregister-Event -SourceIdentifier $_.Name
     }
+    
+    # event handlers are technically implemented as a special kind
+    # of background job, so remove the jobs now:
+    $handlers | Remove-Job
+    
+    # properly dispose the FileSystemWatcher:
+    $watcher.Dispose()
+    
+    Write-Warning "Event Handler disabled, monitoring ends."
+ 
 }
 
 function IniciarDemonio {
@@ -224,23 +243,6 @@ function EliminarDemonio {
     param (
         [string]$Directorio
     )
-
-    $directorioAEliminar=split-path -leaf "$directorio"
-    $cadena=$directorioAEliminar.Replace('\','')
-    noExiste -Nom $cadena
-    Get-EventSubscriber -ErrorAction SilentlyContinue | Where-Object { $_.SourceIdentifier -match "$directorioAEliminar" } | ForEach-Object { Unregister-Event -SourceIdentifier $_.SourceIdentifier }
-    Get-Job -erroraction 'silentlycontinue' | Select-Object Name | Where-Object { $_.Name -match "$directorioAEliminar" } | ForEach-Object { remove-job -force -Name $_.Name }
-    if (Test-Path -Path "./$directorioAEliminar.txt" -PathType Leaf) {
-        get-content -path "./$directorioAEliminar.txt"
-        Remove-Item -Path "./$directorioAEliminar.txt"
-    }
-    else {
-        write-host "El Directorio $directorioAEliminar no ha sufrido cambios."
-    }
-    Write-Host "El proceso ha sido finalizado."
-    exit 1;
-
-
 
     # Buscar el archivo PID
     $pidFile = "$Directorio\monitor-$($Directorio -replace '[\\:\/]', '_').pid"
