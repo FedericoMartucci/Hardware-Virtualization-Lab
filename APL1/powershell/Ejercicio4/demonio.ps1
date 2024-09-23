@@ -98,21 +98,23 @@ if ($Salida -and (-not (Test-Path -Path $Salida -PathType Container))) {
 function Global:Monitorear($FullPath, $accion, $Fecha) {
     $fechaMonitoreo=Get-Date -Date $Fecha -Format "yyyyMMdd-HHmmss"
     $logPath = "$Salida\log-$fechaMonitoreo.txt"
-    New-Item -ItemType File -Path "$log"
+    New-Item -ItemType File -Path "$logPath"
     if($accion -eq "CHANGED"){
         #Añadimos el reporte al archivo log
         $name = [System.IO.Path]::GetFileName($FullPath)
         $size = (Get-Item $FullPath).length
 
         # Buscar archivos duplicados por nombre y tamaño
-        $duplicates = Get-ChildItem -Path $Directorio -Recurse |
-            Where-Object { $_.Name -eq $name -and $_.Length -eq $size }
-        
+        $duplicates = Get-ChildItem -Path $Directorio -Recurse | Where-Object { $_.Name -eq $name -and $_.Length -eq $size }
+
         if ($duplicates.Count -gt 0) {
-            Add-Content -Path $logPath -Value "INFO | Archivo duplicado encontrado: $file"
+            $existingLog = Get-Content $logPath
+            if (-not $existingLog) {
+                Add-Content -Path $logPath -Value "INFO | Archivo duplicado encontrado: $name"
+            }
             
-            $zipFile = "$Salida\$fechaMonitoreo.zip"
-            Compress-Archive -Path $FullPath, $duplicates.FullName -DestinationPath $zipFile
+            $zipFile = "$Salida\$fechaMonitoreo.zip" 
+            Compress-Archive -Path $duplicates.FullName -DestinationPath $zipFile 
         }
     }
     if($accion -eq "RENAMED"){
@@ -121,6 +123,7 @@ function Global:Monitorear($FullPath, $accion, $Fecha) {
     if($accion -eq "CREATED"){
         Add-Content "$log" "$Fecha $FullPath ha sido creado"
     }
+
 }
 
 function CrearMonitor {
