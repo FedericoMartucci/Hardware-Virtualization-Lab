@@ -84,6 +84,7 @@ if [ "$?" != "0" ]; then
 fi
 
 eval set -- "$opciones";
+
 while true; do
     case "$1" in
         -d|--directorio)
