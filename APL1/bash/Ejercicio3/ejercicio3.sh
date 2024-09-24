@@ -76,23 +76,40 @@ function buscar_duplicados(){
 
 directorioEntrada=""
 
-case "$1" in
--d|--directorio)
-    directorioEntrada=$2
-    ;;
--h|--help)
-    ayuda    
-    ;;
-*)echo "Error: Opción desconocida $1"
-    ayuda
-    ;; 
-esac
+opciones=$(getopt -o d:h --l directorio:,help -- "$@" 2> /dev/null);
 
+if [ "$?" != "0" ]; then
+    echo "Opcion/es incorrectas";
+    exit 0;
+fi
+
+eval set -- "$opciones";
+while true; do
+    case "$1" in
+        -d|--directorio)
+            directorioEntrada=$2
+            shift 2;
+            ;;
+        -h|--help)
+            ayuda 
+            ;;
+        --)
+            shift;
+            break;
+            ;;
+        *)echo "Error: Opción desconocida $1"
+            ayuda
+            ;; 
+    esac
+done
+
+# Verificar que se haya proporcionado un directorio de entrada no vacio
 if [ -z "$directorioEntrada" ]; then
     echo "ERROR: Se debe especificar un directorio válido.";
     exit $ERROR_DIRECTORIO_VACIO;
 fi
 
+# Verificar que se haya proporcionado el directorio de entrada correctamente
 if ! [ -d "$directorioEntrada" ]; then
     echo "ERROR: El directorio '$directorioEntrada' no existe.";
     exit $ERROR_DIRECTORIO_INEXISTENTE;
