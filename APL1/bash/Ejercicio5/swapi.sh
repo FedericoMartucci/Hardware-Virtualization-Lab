@@ -20,7 +20,7 @@ declare ID_INEXISTENTE=1;
 
 # Función para mostrar un mensaje de uso
 function ayuda() {
-    echo "USO: $0 [-p|--people <ids_separados_por_comas>] [-f|--films <ids_separados_por_comas>]"
+    echo "USO: $0 [-p|--people <ids_separados_por_comas>] [-f|--film <ids_separados_por_comas>]"
     echo "       $0 --help"
     echo
     echo "DESCRIPCIÓN:"
@@ -29,12 +29,12 @@ function ayuda() {
     echo
     echo "OPCIONES:"
     echo "  -p, --people <ids_separados_por_comas>    IDs de los personajes a buscar. Puedes especificar uno o más IDs separados por comas."
-    echo "  -f, --films <ids_separados_por_comas>     IDs de las películas a buscar. Puedes especificar uno o más IDs separados por comas."
+    echo "  -f, --film <ids_separados_por_comas>      IDs de las películas a buscar. Puedes especificar uno o más IDs separados por comas."
     echo "  -h, --help                                Muestra este mensaje de ayuda."
     echo
     echo "ACLARACIONES:"
     echo "  - Se requiere tener instalado el comando jq (sudo apt install jq)."
-    echo "  - Los parámetros --people y --films pueden usarse juntos para buscar múltiples personajes y películas en una sola ejecución."
+    echo "  - Los parámetros --people y --film pueden usarse juntos para buscar múltiples personajes y películas en una sola ejecución."
     echo "  - Si se ingresa un ID inválido o la API retorna un error, se mostrará un mensaje acorde."
     exit 0;
 }
@@ -51,7 +51,7 @@ function buscar_data() {
     local api_url="https://www.swapi.tech/api/$type/$id"
 
     
-    if [[ -f "$cache_file" ]]; then
+    if [[ -s "$cache_file" ]]; then
         cat "$cache_file"
     else
         response=$(curl -s "$api_url")
@@ -98,8 +98,18 @@ function procesar_ids() {
 people_ids=""
 film_ids=""
 
+opciones=$(getopt -o p:f:h --long people:,film:,help -- "$@" 2> /dev/null)
+
+if [ "$?" != "0" ]; then
+    echo "Opcion/es incorrectas"
+    ayuda;
+    exit 0;
+fi
+
+eval set -- "$opciones"
+
 # Leer argumentos
-while [[ $# -gt 0 ]]; do
+while true; do
     case $1 in
         --people|-p)
             shift
@@ -111,6 +121,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --help|-h)
             ayuda
+            ;;
+        --)
+            shift
+            break
             ;;    
         *)
             echo "Error: Opción desconocida $1"
