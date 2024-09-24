@@ -1,9 +1,0 @@
-ejemplo1.sh
-	./ejemplo1/ejemplo1.sh
-	./ejemplo2/ejemplo1.sh
-ejemplo1.sh
-	./ejemplo1/ejemplo3/ejemplo1.sh
-	./ejemplo1/ejemplo3/ejemplo4/ejemplo1.sh
-ejemplo2.sh
-	./ejemplo1/ejemplo3/ejemplo4/ejemplo2.sh
-	./ejemplo2/ejemplo2.sh
