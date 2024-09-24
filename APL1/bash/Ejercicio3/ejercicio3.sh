@@ -34,7 +34,6 @@ function buscar_duplicados(){
     #   - Value: [<path_1>, <path_2>, <path_3>]
     
     local directorio=$1
-    local salida=$2
 
     find $directorio -type f -exec ls -l {} + | awk '
 {
@@ -72,11 +71,10 @@ END {
         print duplicates[key]
     }
 }
-' > $salida
+'
 }
 
 directorioEntrada=""
-salida="duplicado.txt"
 
 case "$1" in
 -d|--directorio)
@@ -100,6 +98,4 @@ if ! [ -d "$directorioEntrada" ]; then
     exit $ERROR_DIRECTORIO_INEXISTENTE;
 fi
 
-buscar_duplicados "$directorioEntrada" "$salida"
-
-
+buscar_duplicados "$directorioEntrada"
