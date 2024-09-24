@@ -44,8 +44,10 @@ function buscar_data() {
     local type=$1
     local id=$2
     local cache_dir="./cache"
-
-    mkdir -p "$cache_dir"
+    # Obtener la ruta del directorio del script
+    local script_dir=$(dirname "$0")
+    
+    mkdir -p "$script_dir/$cache_dir"
 
     local cache_file="$cache_dir/"$type$id".json"
     local api_url="https://www.swapi.tech/api/$type/$id"
