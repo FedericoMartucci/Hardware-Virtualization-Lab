@@ -1,0 +1,1 @@
+INFO | Archivo duplicado encontrado: arch2.txt

@@ -93,33 +93,59 @@ if ($Salida -and (-not (Test-Path -Path $Salida -PathType Container))) {
     exit $ERROR_DIRECTORIO_INVALIDO
 }
 
-function Global:Monitorear($FullPath, $accion, $Fecha) {
-    $fechaMonitoreo=Get-Date -Date $Fecha -Format "yyyyMMdd-HHmmss"
-    $logPath = "$Salida\log-$fechaMonitoreo.txt"
+function Global:zipear {
+    Param(
+        [string] $archivoAZipear,
+        [string] $archivoZip
+    )
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    $archivoMoverNombre = [System.IO.Path]::GetFileName($archivoAZipear)
+    $archivoMoverRutaAbs = $(Resolve-Path "$archivoAZipear")
+
+    # Si no existe el archivo zip, lo crea.
+    if (!(Test-Path "$archivoZip")) {
+        $zip = [System.IO.Compression.ZipFile]::Open("$archivoZip", "create");
+        $zip.Dispose();
+    }
+    
+    $compressionLevel = [System.IO.Compression.CompressionLevel]::Fastest
+    $zip = [System.IO.Compression.ZipFile]::Open($archivoZip, "update");
+    [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, "$archivoMoverRutaAbs", "$archivoMoverNombre", $compressionLevel);
+    $zip.Dispose();
+}
+
+function Global:Monitorear {
+    param (
+        [string]$FullPath,
+        [string]$Timestamp,
+        [string]$Directorio,
+        [string]$Salida
+    )
+    $fechaMonitoreo=Get-Date -Date $Timestamp -Format "yyyyMMdd-HHmmss"
+    $logPath = "$Salida/log-$fechaMonitoreo.txt"
     New-Item -ItemType File -Path "$logPath"
-    if($accion -eq "CHANGED"){
-        #Añadimos el reporte al archivo log
-        $name = [System.IO.Path]::GetFileName($FullPath)
-        $size = (Get-Item $FullPath).length
 
-        # Buscar archivos duplicados por nombre y tamaño
-        $duplicates = Get-ChildItem -Path $Directorio -Recurse | Where-Object { $_.Name -eq $name -and $_.Length -eq $size }
+    #Añadimos el reporte al archivo log
+    $name = [System.IO.Path]::GetFileName($FullPath)
+    $size = (Get-Item $FullPath).length
 
-        if ($duplicates.Count -gt 1) {
-            $existingLog = Get-Content $logPath
-            if (-not $existingLog) {
-                Add-Content -Path $logPath -Value "INFO | Archivo duplicado encontrado: $name"
-            }
-            
-            $zipFile = "$Salida\$fechaMonitoreo.zip" 
-            Compress-Archive -Path $duplicates.FullName -DestinationPath $zipFile -Force
+    # Buscar archivos duplicados por nombre y tamaño
+    $duplicates = Get-ChildItem -Path $Directorio -Recurse | Where-Object { $_.Name -eq $name -and $_.Length -eq $size }
+
+    if ($duplicates.Count -gt 1) {
+        $existingLog = Get-Content $logPath
+        if (-not $existingLog) {
+            Add-Content -Path $logPath -Value "INFO | Archivo duplicado encontrado: $name"
         }
-    }
-    if($accion -eq "RENAMED"){
-        Add-Content "$log" "$Fecha $FullPath ha sido renombrado"
-    }
-    if($accion -eq "CREATED"){
-        Add-Content "$log" "$Fecha $FullPath ha sido creado"
+        
+        $zipPath = "$Salida/$fechaMonitoreo.zip"
+
+        # Compress-Archive -Path $duplicates.FullName -DestinationPath $zipPath
+
+        ForEach ($item in $duplicates) {
+            zipear -archivoAZipear $item.FullName -archivoZip $zipPath
+        }
     }
 
 }
@@ -129,6 +155,9 @@ function CrearMonitor {
         [string]$Directorio,
         [string]$Salida
     )
+
+    $global:dir = $Directorio
+    $global:SalidaLogs = $Salida
 
     # Crear el FileSystemWatcher
     $global:watcher = New-Object System.IO.FileSystemWatcher
@@ -142,43 +171,25 @@ function CrearMonitor {
         $details = $event.SourceEventArgs
         $Name = $details.Name
         $FullPath = $details.FullPath
-        $OldFullPath = $details.OldFullPath
-        $OldName = $details.OldName
-
-        # tipo de cambio:
-        $ChangeType = $details.ChangeType
-
-        # cuándo ocurrió el cambio:
         $Timestamp = $event.TimeGenerated
 
-        $ev = ""
-        switch ($ChangeType)
-        {
-            "Changed"  { $ev="CHANGED" }
-            "Created"  { $ev="CREATED" }
-            "Renamed"  { $ev="RENAMED" }
-            
-            # Cualquier tipo de cambio no controlado:
-            default   {}
-        }
-
-        Monitorear "$FullPath" $ev $Timestamp
+        Monitorear -FullPath $FullPath -Timestamp $Timestamp -Directorio $Directorio -Salida $SalidaLogs
     }
-
     $global:handlers = . {
-        Register-ObjectEvent -InputObject $watcher -EventName Changed -Action $action -SourceIdentifier "ChangedEvent" 
-        Register-ObjectEvent -InputObject $watcher -EventName Created -Action $action -SourceIdentifier "CreatedEvent"
-        Register-ObjectEvent -InputObject $watcher -EventName Renamed -Action $action -SourceIdentifier "RenamedEvent"
+        Register-ObjectEvent $watcher -EventName Changed -Action $action -SourceIdentifier "ChangedEvent" 
+        Register-ObjectEvent $watcher -EventName Created -Action $action -SourceIdentifier "CreatedEvent"
+        Register-ObjectEvent $watcher -EventName Renamed -Action $action -SourceIdentifier "RenamedEvent"
     }
+    
+    # Crear el Job en segundo plano
     $job = Start-Job -ScriptBlock {
-        # Mantener el demonio vivo
         while ($true) {
             Start-Sleep -Seconds 1  # Evitar el consumo excesivo de CPU
         }
-    }  # No mostrar la salida del Job en la consola
+    }
 
     $jobId = $job.Id
-    Write-Host $pidFile
+
     Set-Content -Path $pidFile -Value $jobId
 
     Write-Host "El demonio se ha iniciado en segundo plano con ID $jobId." -ForegroundColor Green
@@ -227,9 +238,9 @@ function FinalizarDemonio {
 
         # Detener el proceso del trabajo en segundo plano
         Stop-Job -Id $pidDelArchivo
-        $handlers | ForEach-Object {
-            Unregister-Event -SourceIdentifier $_.Name
-        }
+        Unregister-Event -SourceIdentifier "ChangedEvent"
+        Unregister-Event -SourceIdentifier "CreatedEvent"
+        Unregister-Event -SourceIdentifier "RenamedEvent"
         Remove-Job -Id $pidDelArchivo
         Remove-Item $pidFile
         
@@ -253,4 +264,3 @@ if ($Kill) {
 } else {
     IniciarDemonio -Directorio $Directorio -Salida $Salida
 }
-exit 0
