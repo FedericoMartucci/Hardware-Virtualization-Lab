@@ -56,9 +56,6 @@ function buscar_data() {
     else
         response=$(curl -s "$api_url")
         
-        #tener siempre en cuenta, que los json pueden venir con data
-        #que el jq no puede procesar como headers y demas cosas,
-        #sin esta linea, no funca nada jeee
         clean_response=$(echo "$response" | tr -cd '\11\12\15\40-\176')
 
         # Verificar si la respuesta es JSON válido
@@ -66,7 +63,7 @@ function buscar_data() {
             echo "$clean_response" | jq . > "$cache_file"
             cat "$cache_file"
         else
-            echo "Error: Invalid response for $type ID: $id"
+            echo "ERROR: Respuesta invalida para el tipo $type con ID: $id"
             echo "$clean_response"  # Imprimir la respuesta cruda para depuración
             return 1
         fi
@@ -85,17 +82,12 @@ function procesar_ids() {
     for id in "${id_array[@]}"; do
         # Llamar a la función fetch_data para obtener datos de la API o caché
         data=$(buscar_data "$type" "$id")
-        #echo "aqui esta la data!"
-        #echo "$data"
 
         mensaje=$(echo "$data" | jq -r .message)
         
         if [[ "$mensaje" =~ "not found" ]]; then
-            echo "El id proporcionado es un id invalido, pruebe con otro!"
-            exit $ID_INEXISTENTE;
-        fi    
-
-        if [[ "$type" == "people" ]]; then
+            echo "El id $id de tipo $type proporcionado es un id invalido, pruebe con otro!"
+        elif [[ "$type" == "people" ]]; then
             echo "$data" | jq --arg id "$id" -r '.result.properties | "\nId: \($id)\nName: \(.name)\nGender: \(.gender)\nHeight: \(.height)\nMass: \(.mass)\nBirth Year: \(.birth_year)"'
         elif [[ "$type" == "films" ]]; then
             echo "$data" | jq -r '.result.properties | "\nTitle: \(.title)\nEpisode id: \(.episode_id)\nRelease date: \(.release_date)\nOpening crawl: \(.opening_crawl)"'
