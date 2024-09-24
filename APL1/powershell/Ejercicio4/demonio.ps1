@@ -1,0 +1,266 @@
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#               Virtualizacion de Hardware              #
+#                                                       #
+#   APL1                                                #
+#   Nro ejercicio: 5                                    # 
+#   Nro entrega: 1                                      #
+#   Nombre del script: demonio.ps1                      # 
+#                                                       #
+#   Integrantes:                                        #
+#                                                       #
+#       Branchesi, Tomas Agustin      43013625          #
+#       Martucci, Federico Ariel      44690247          #
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+
+<#
+.SYNOPSIS
+Script para monitorear un directorio en busca de archivos duplicados y comprimirlos.
+
+.DESCRIPTION
+Este script monitorea un directorio especificado y detecta si se crean archivos duplicados. 
+Cuando se detectan archivos duplicados (basados en el nombre y el tamaño), se registra la información en un archivo de log y se genera un archivo comprimido en formato ZIP con los archivos duplicados.
+
+El script se ejecuta en segundo plano como un proceso "demonio".
+Es posible detener este proceso si ya se está ejecutando, utilizando la opción -Kill.
+
+.PARAMETER Directorio
+Especifica el directorio a monitorear. El monitoreo incluye los subdirectorios de forma recursiva.
+
+.PARAMETER Salida
+Especifica el directorio donde se guardarán los archivos comprimidos y los logs generados por el script.
+
+.PARAMETER Kill
+Detiene el proceso "demonio" que está monitoreando el directorio especificado.
+
+.EXAMPLE
+.\script.ps1 -Directorio "C:\ruta\al\directorio" -Salida "C:\ruta\de\salida"
+
+Este ejemplo inicia el monitoreo del directorio especificado y guarda los logs y archivos comprimidos en el directorio de salida.
+
+.EXAMPLE
+.\script.ps1 -Directorio "C:\ruta\al\directorio" -Salida "C:\ruta\de\salida" -Kill
+
+Este ejemplo detiene el proceso "demonio" que está monitoreando el directorio especificado, si es que está en ejecución.
+
+.NOTES
+Consideraciones:
+• Solo se consideran duplicados aquellos archivos que coinciden tanto en nombre como en tamaño.
+• El archivo comprimido contiene el archivo original y todos los duplicados encontrados.
+• El script utiliza un archivo PID para gestionar el estado del proceso en segundo plano.
+• La compresión se realiza en formato ZIP.
+#>
+
+# Parámetros de entrada
+[CmdletBinding()]
+param (
+    [Parameter(Mandatory = $true)]   
+    [ValidateNotNullOrEmpty()] 
+    [string]$Directorio,
+    [Parameter(Mandatory = $false)]   
+    [string]$Salida,
+    [Parameter(Mandatory = $false)]
+    [switch]$Kill
+)
+
+# Códigos de error
+$Script:ERROR_PARAMETROS_INVALIDOS = 1
+$Script:ERROR_ARGUMENTO_DESCONOCIDO = 2
+$Script:ERROR_DIRECTORIO_INVALIDO = 3
+$Script:ERROR_PARAMETROS_FALTANTES = 4
+$Script:ERROR_DEMONIO_EXISTENTE = 5
+
+# Validar que el directorio exista
+if (-not (Test-Path -Path $Directorio -PathType Container)) {
+    Write-Error "El directorio especificado no existe o no es válido: $Directorio"
+    exit $ERROR_DIRECTORIO_INVALIDO
+}
+
+# Validar que al menos uno de los parámetros -Salida o -Kill esté presente
+if (-not $Salida -and -not $Kill) {
+    Write-Error "Debe ingresar una opción válida: -Salida o -Kill."
+    exit $ERROR_PARAMETROS_FALTANTES
+}
+
+# Validar exclusividad mutua: no se puede usar -Salida y -Kill al mismo tiempo
+if ($Salida -and $Kill) {
+    Write-Error "Los parámetros -Salida y -Kill no pueden ser usados simultáneamente."
+    exit $ERROR_PARAMETROS_INVALIDOS
+}
+
+# Validar que el directorio de salida exista cuando se usa -Salida
+if ($Salida -and (-not (Test-Path -Path $Salida -PathType Container))) {
+    Write-Error "El directorio de salida especificado no existe o no es válido: $Salida"
+    exit $ERROR_DIRECTORIO_INVALIDO
+}
+
+function Global:zipear {
+    Param(
+        [string] $archivoAZipear,
+        [string] $archivoZip
+    )
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    $archivoMoverNombre = [System.IO.Path]::GetFileName($archivoAZipear)
+    $archivoMoverRutaAbs = $(Resolve-Path "$archivoAZipear")
+
+    # Si no existe el archivo zip, lo crea.
+    if (!(Test-Path "$archivoZip")) {
+        $zip = [System.IO.Compression.ZipFile]::Open("$archivoZip", "create");
+        $zip.Dispose();
+    }
+    
+    $compressionLevel = [System.IO.Compression.CompressionLevel]::Fastest
+    $zip = [System.IO.Compression.ZipFile]::Open($archivoZip, "update");
+    [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, "$archivoMoverRutaAbs", "$archivoMoverNombre", $compressionLevel);
+    $zip.Dispose();
+}
+
+function Global:Monitorear {
+    param (
+        [string]$FullPath,
+        [string]$Timestamp,
+        [string]$Directorio,
+        [string]$Salida
+    )
+    $fechaMonitoreo=Get-Date -Date $Timestamp -Format "yyyyMMdd-HHmmss"
+    $logPath = "$Salida/log-$fechaMonitoreo.txt"
+    New-Item -ItemType File -Path "$logPath"
+
+    #Añadimos el reporte al archivo log
+    $name = [System.IO.Path]::GetFileName($FullPath)
+    $size = (Get-Item $FullPath).length
+
+    # Buscar archivos duplicados por nombre y tamaño
+    $duplicates = Get-ChildItem -Path $Directorio -Recurse | Where-Object { $_.Name -eq $name -and $_.Length -eq $size }
+
+    if ($duplicates.Count -gt 1) {
+        $existingLog = Get-Content $logPath
+        if (-not $existingLog) {
+            Add-Content -Path $logPath -Value "INFO | Archivo duplicado encontrado: $name"
+        }
+        
+        $zipPath = "$Salida/$fechaMonitoreo.zip"
+
+        # Compress-Archive -Path $duplicates.FullName -DestinationPath $zipPath
+
+        ForEach ($item in $duplicates) {
+            zipear -archivoAZipear $item.FullName -archivoZip $zipPath
+        }
+    }
+
+}
+
+function CrearMonitor {
+    param (
+        [string]$Directorio,
+        [string]$Salida
+    )
+
+    $global:dir = $Directorio
+    $global:SalidaLogs = $Salida
+
+    # Crear el FileSystemWatcher
+    $global:watcher = New-Object System.IO.FileSystemWatcher
+    $watcher.Path = $Directorio
+    $watcher.Filter = "*.*"  # Monitorea todos los archivos
+    $watcher.IncludeSubdirectories = $true
+    $watcher.EnableRaisingEvents = $true
+    
+    # Acción al detectar cambio
+    $action = {
+        $details = $event.SourceEventArgs
+        $Name = $details.Name
+        $FullPath = $details.FullPath
+        $Timestamp = $event.TimeGenerated
+
+        Monitorear -FullPath $FullPath -Timestamp $Timestamp -Directorio $Directorio -Salida $SalidaLogs
+    }
+    $global:handlers = . {
+        Register-ObjectEvent $watcher -EventName Changed -Action $action -SourceIdentifier "ChangedEvent" 
+        Register-ObjectEvent $watcher -EventName Created -Action $action -SourceIdentifier "CreatedEvent"
+        Register-ObjectEvent $watcher -EventName Renamed -Action $action -SourceIdentifier "RenamedEvent"
+    }
+    
+    # Crear el Job en segundo plano
+    $job = Start-Job -ScriptBlock {
+        while ($true) {
+            Start-Sleep -Seconds 1  # Evitar el consumo excesivo de CPU
+        }
+    }
+
+    $jobId = $job.Id
+
+    Set-Content -Path $pidFile -Value $jobId
+
+    Write-Host "El demonio se ha iniciado en segundo plano con ID $jobId." -ForegroundColor Green
+}
+
+function IniciarDemonio {
+    param (
+        [string]$Directorio,
+        [string]$Salida
+    )
+
+    # Definir la ruta del archivo PID
+    $pidFile = "$PSScriptRoot\pid-monitor.pid"
+
+    # Verificar si el archivo PID ya existe
+    if (Test-Path $pidFile) {
+        # Leer el PID almacenado en el archivo
+        $pidDelArchivo = Get-Content $pidFile
+        
+        # Comprobar si el proceso con ese PID está corriendo
+        if (Get-Job -Id $pidDelArchivo -ErrorAction SilentlyContinue) {
+            Write-Host "El demonio ya existe para el directorio '$Directorio' con ID $pidDelArchivo." -ForegroundColor Red
+            exit $ERROR_DEMONIO_EXISTENTE # Salir con código de error si ya hay un demonio corriendo
+        } else {
+            # Si el proceso ya no existe, eliminar el archivo PID
+            Remove-Item $pidFile
+        }
+    }
+
+    # Ejecutar el script en segundo plano
+    CrearMonitor -Directorio $Directorio -Salida $Salida
+}
+
+function FinalizarDemonio {
+    param (
+        [string]$Directorio
+    )
+
+    # Definir la ruta del archivo PID
+    $pidFile = "$PSScriptRoot\pid-monitor.pid"
+
+    # Verificar si el archivo PID existe
+    if (Test-Path $pidFile) {
+        # Leer el PID almacenado en el archivo
+        $pidDelArchivo = Get-Content $pidFile
+
+        # Detener el proceso del trabajo en segundo plano
+        Stop-Job -Id $pidDelArchivo
+        Unregister-Event -SourceIdentifier "ChangedEvent"
+        Unregister-Event -SourceIdentifier "CreatedEvent"
+        Unregister-Event -SourceIdentifier "RenamedEvent"
+        Remove-Job -Id $pidDelArchivo
+        Remove-Item $pidFile
+        
+        # event handlers are technically implemented as a special kind
+        # of background job, so remove the jobs now:
+        $handlers | Remove-Job
+        
+        # properly dispose the FileSystemWatcher:
+        $watcher.Dispose()
+        
+        # Write-Warning "Event Handler disabled, monitoring ends."
+        Write-Host "El demonio ha sido detenido." -ForegroundColor Yellow
+    } else {
+        Write-Host "No se encontró ningún demonio activo para el directorio '$Directorio'." -ForegroundColor Red
+    }
+}
+
+# Procesar parámetros
+if ($Kill) {
+    FinalizarDemonio -Directorio $Directorio
+} else {
+    IniciarDemonio -Directorio $Directorio -Salida $Salida
+}
