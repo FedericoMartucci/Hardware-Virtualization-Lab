@@ -36,16 +36,18 @@ function mostrarAyuda() {
     echo ""
     echo "Ejemplos:"
     echo "  Ejecutar el monitoreo de un directorio y guardar los logs y backups:"
-    echo "    bash $0 -d /ruta/al/directorio -s /ruta/al/directorio_de_salida"
+    echo "    bash $0 -d $(dirname "$0")/prueba -s $(dirname "$0")/log"
     echo ""
     echo "  Detener el monitoreo de un directorio:"
-    echo "    bash $0 -d /ruta/al/directorio --kill"
+    echo "    bash $0 -d $(dirname "$0")/prueba --kill"
     echo ""
     echo "Consideraciones:"
     echo "  - Solo se permite un proceso demonio por directorio a la vez. Si ya existe un proceso"
     echo "    monitoreando el directorio especificado, no se permitirá iniciar otro."
     echo "  - El demonio queda corriendo en segundo plano automáticamente, sin necesidad de comandos adicionales."
     echo "  - Los archivos comprimidos generados tendrán el formato 'yyyyMMdd-HHmmss.tar.gz'."
+    echo "  - Debemos estar posicionados en el directorio donde se ejecuto el demonio para poder matarlo,"
+    echo "    de esta forma evitamos interpolaciones con otros demonios que puedan existir para carpetas con nombres similares."
     echo ""
     echo "Requisitos:"
     echo "  - inotify-tools debe estar instalado para monitorear cambios en el sistema de archivos."
@@ -192,6 +194,8 @@ function eliminarDemonioUnDirectorio() {
         procesos=$(ps -p "$pid" -o args=)
 
         # Si el proceso monitorea el directorio correcto, lo matamos
+        # Debemos estar posicionados en el directorio donde se ejecuto el demonio para poder matarlo,
+        # de esta forma evitamos interpolaciones con otros demonios que puedan existir para carpetas con nombres similares.
         if [[ "$procesos" =~ "$1" ]]; then
             echo "Eliminando el demonio para el directorio '$1'..."
             
