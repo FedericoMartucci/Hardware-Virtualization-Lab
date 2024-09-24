@@ -43,7 +43,7 @@ declare ERROR_NUMERO_JUGADO_INVALIDO=9;
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Funciones ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 function ayuda() {
-    echo "USO: $0 [-d|--directorio <directorio_entrada_archivos_csv>] [-s|--salida <ruta_archivo_json_salida>] [-p|--pantalla]";
+    echo "USO: $0 [-d|--directorio <directorio_entrada_archivos_csv>] [-a|--archivo <ruta_archivo_json_salida>] [-p|--pantalla]";
     echo "DESCRIPCIÓN: Este script procesa archivos CSV de notas de finales y genera un archivo JSON con el resumen de las notas de los alumnos.";
     echo "OPCIONES:";
     echo "  -d, --directorio   Ruta del directorio que contiene los archivos CSV a procesar.";
@@ -102,6 +102,9 @@ function generarJson() {
 # cuenta las frecuencias de cada número en el archivo y guarda la lista
 # de números únicos encontrados en la variable numerosGanadores.
 function obtenerNumerosGanadores() {
+    # Obtener la ruta del directorio del script
+    script_dir=$(dirname "$0")
+
     numerosGanadores=$(awk -F"," '
         {
             for (i = 1; i <= NF; i++)
@@ -111,7 +114,7 @@ function obtenerNumerosGanadores() {
             for (num in numerosGanadores)
                 printf "%s ", num
         }
-        ' ganadores.csv
+        ' "$script_dir/ganadores.csv"
     )
 }
 
