@@ -75,11 +75,16 @@ function eliminarExtensionArchivo($filePath) {
 function obtenerNumerosGanadores {
     $numerosGanadores = @()
 
-    Get-Content -Path "ganadores.csv" | ForEach-Object {
+    # Usar $PSScriptRoot para obtener el directorio del script
+    $rutaArchivo = Join-Path -Path $PSScriptRoot -ChildPath "ganadores.csv"
+
+    # Leer el archivo CSV y obtener los números ganadores
+    Get-Content -Path $rutaArchivo | ForEach-Object {
         $numeros = $_ -split ','
         $numerosGanadores += $numeros
     }
     
+    # Devolver los números únicos
     return $numerosGanadores | Select-Object -Unique
 }
 
