@@ -60,7 +60,7 @@ if (($PSBoundParameters.ContainsKey('archivo') -and $pantalla) -or (-not $PSBoun
 }
 
 # Variables globales
-$jsonData = @{
+$jsonData = [ordered]@{
     "5_aciertos" = @()
     "4_aciertos" = @()
     "3_aciertos" = @()
@@ -133,7 +133,7 @@ function procesarArchivos {
 
 # Función para generar el archivo JSON a partir de los aciertos
 function generarJson {
-    $json_output = $jsonData | ConvertTo-Json | ForEach-Object { $_ -replace '    ', ' ' }
+    $json_output = $jsonData | ConvertTo-Json
     
     if ($pantalla) {
         Write-Output $json_output

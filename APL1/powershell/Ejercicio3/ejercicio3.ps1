@@ -32,8 +32,6 @@
     El script acepta rutas con espacios y maneja errores de manera amigable.
 #>
 
-
-
 [CmdletBinding()]
 param (
     [Parameter(Mandatory = $true)]
