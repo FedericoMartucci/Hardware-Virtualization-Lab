@@ -6,7 +6,7 @@
 #   APL1                                                #
 #   Nro ejercicio: 4                                    #
 #   Nro entrega: 1                                      #
-#   Nombre del script: ejercicio4.sh                    #
+#   Nombre del script: demonio.sh                       #
 #                                                       #
 #   Integrantes:                                        #
 #                                                       #

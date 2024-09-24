@@ -92,7 +92,7 @@ function Get-FromAPI {
             return $response.result
         }
     } catch {
-        Write-Error "Error al consultar la API para $type con ID ${id}: $($_.Exception.Message)"
+        Write-Host "Error al consultar la API para $type con ID ${id}: $($_.Exception.Message)" -ForegroundColor Red
         return $null
     }
 }

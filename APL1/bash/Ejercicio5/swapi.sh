@@ -7,7 +7,7 @@
 #   APL1                                                #
 #   Nro ejercicio: 5                                    #
 #   Nro entrega: 1                                      #
-#   Nombre del script: ejercicio5.sh                    #
+#   Nombre del script: swapi.sh                         #
 #                                                       #
 #   Integrantes:                                        #
 #                                                       #

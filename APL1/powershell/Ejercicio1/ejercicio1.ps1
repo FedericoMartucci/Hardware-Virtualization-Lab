@@ -23,7 +23,7 @@ Este script procesa los resultados de aciertos de varios archivos CSV y genera u
 • La cantidad de aciertos mínima considerada es 3.
 • La salida puede ser en formato JSON o mostrarse por pantalla.
 
-.PARAMETER directorioEntrada
+.PARAMETER directorio
 Ruta del directorio que contiene los archivos CSV a procesar.
 
 .PARAMETER archivo
@@ -33,7 +33,7 @@ Ruta del archivo JSON de salida.
 Muestra la salida por pantalla, no genera el archivo JSON.
 
 .EXAMPLE
-.\ejercicio1.ps1 -directorioEntrada "C:\ruta\del\directorio" -archivo "C:\ruta\del\archivo.json"
+.\ejercicio1.ps1 -directorio "C:\ruta\del\directorio" -archivo "C:\ruta\del\archivo.json"
 
 .NOTES
 Consideraciones:
@@ -44,7 +44,7 @@ Consideraciones:
 
 param(
     [Parameter(Mandatory=$true)] [ValidateNotNullOrEmpty()]
-    [string]$directorioEntrada,
+    [string]$directorio,
 
     [Parameter(Mandatory=$false)] [ValidateNotNullOrEmpty()]
     [string]$archivo,
@@ -107,7 +107,7 @@ function contarAciertos($numeros, $numerosGanadores) {
 function procesarArchivos {
     $numerosGanadores = obtenerNumerosGanadores
 
-    Get-ChildItem -Path $directorioEntrada -Filter *.csv | ForEach-Object {
+    Get-ChildItem -Path $directorio -Filter *.csv | ForEach-Object {
         $agencia = eliminarExtensionArchivo $_.FullName
 
         Get-Content $_.FullName | ForEach-Object {
@@ -145,7 +145,7 @@ function generarJson {
 
 # Ejecución principal
 function main {
-    if (-not (Test-Path $directorioEntrada)) {
+    if (-not (Test-Path $directorio)) {
         Write-Host "ERROR: El directorio especificado no existe."
         exit 1
     }

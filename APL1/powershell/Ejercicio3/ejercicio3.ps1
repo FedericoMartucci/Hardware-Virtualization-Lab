@@ -39,7 +39,7 @@ param (
     [string]$Directorio
 )
 
-# Exit codes
+#Codigos de salida
 $Script:ERROR_DIRECTORIO_INVALIDO=1
 $Script:ERROR_PERMISO_DENEGADO = 2
 $Script:ERROR_PROCESO_ARCHIVO = 3

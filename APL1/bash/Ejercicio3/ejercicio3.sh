@@ -36,42 +36,42 @@ function buscar_duplicados(){
     local directorio=$1
 
     find $directorio -type f -exec ls -l {} + | awk '
-{
-    # Obtenemos el tamaño del archivo (campo 5) y su nombre completo con ruta (campo 9)
-    size = $5
-    filename = $9
+    {
+        # Obtenemos el tamaño del archivo (campo 5) y su nombre completo con ruta (campo 9)
+        size = $5
+        filename = $9
 
-    gsub(".*/", "", filename)
-    
-    # Guardamos en un array asociativo, donde la clave es "nombre|tamaño"
-    key = filename "|" size
-    
-    # Si la clave ya existe, significa que el archivo es duplicado
-
-    if (files[key] != "") {
-        if(duplicates[key] != "") {
-            duplicates[key] = duplicates[key] "\n\t" $9
-        }
-        else {
-            duplicates[key] = files[key] "\n\t" $9
-        }
-    } else {
-        files[key] = "\t" $9
-    }
-}
-
-END {
-    # Imprimir los archivos duplicados
-    
-    for (key in duplicates) {
-        split(key, arr, "|")  # Separa el nombre y el tamaño
-        print arr[1]  # Imprime el nombre del archivo
+        gsub(".*/", "", filename)
         
-        # Imprime todas las rutas en las que se encontró el duplicado
-        print duplicates[key]
+        # Guardamos en un array asociativo, donde la clave es "nombre|tamaño"
+        key = filename "|" size
+        
+        # Si la clave ya existe, significa que el archivo es duplicado
+
+        if (files[key] != "") {
+            if(duplicates[key] != "") {
+                duplicates[key] = duplicates[key] "\n\t" $9
+            }
+            else {
+                duplicates[key] = files[key] "\n\t" $9
+            }
+        } else {
+            files[key] = "\t" $9
+        }
     }
-}
-'
+
+    END {
+        # Imprimir los archivos duplicados
+        
+        for (key in duplicates) {
+            split(key, arr, "|")  # Separa el nombre y el tamaño
+            print arr[1]  # Imprime el nombre del archivo
+            
+            # Imprime todas las rutas en las que se encontró el duplicado
+            print duplicates[key]
+        }
+    }
+    '
 }
 
 directorioEntrada=""
