@@ -156,9 +156,13 @@ function CrearMonitor {
         [string]$Salida
     )
 
+    # Convertir la ruta relativa a absoluta
+    $Directorio = Resolve-Path -Path $Directorio
+    $Salida = Resolve-Path -Path $Salida
+
     $global:dir = $Directorio
     $global:SalidaLogs = $Salida
-
+    Write-Host $Directorio
     # Crear el FileSystemWatcher
     $global:watcher = New-Object System.IO.FileSystemWatcher
     $watcher.Path = $Directorio
