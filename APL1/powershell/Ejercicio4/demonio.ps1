@@ -95,23 +95,28 @@ if ($Salida -and (-not (Test-Path -Path $Salida -PathType Container))) {
 
 function Global:zipear {
     Param(
-        [string] $archivoAZipear,
-        [string] $archivoZip
+        [string] $pathArchivoAZipear,
+        [string] $rutaRelativaArchivo,
+        [string] $nombreZip
     )
     Add-Type -AssemblyName System.IO.Compression.FileSystem
 
-    $archivoMoverNombre = [System.IO.Path]::GetFileName($archivoAZipear)
-    $archivoMoverRutaAbs = $(Resolve-Path "$archivoAZipear")
-
     # Si no existe el archivo zip, lo crea.
-    if (!(Test-Path "$archivoZip")) {
-        $zip = [System.IO.Compression.ZipFile]::Open("$archivoZip", "create");
+    if (!(Test-Path "$nombreZip")) {
+        $zip = [System.IO.Compression.ZipFile]::Open("$nombreZip", "create");
         $zip.Dispose();
     }
     
     $compressionLevel = [System.IO.Compression.CompressionLevel]::Fastest
-    $zip = [System.IO.Compression.ZipFile]::Open($archivoZip, "update");
-    [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, "$archivoMoverRutaAbs", "$archivoMoverNombre", $compressionLevel);
+    $zip = [System.IO.Compression.ZipFile]::Open($nombreZip, "update");
+
+    # Verificar si el archivo ya existe en el ZIP para evitar duplicados
+    $entryExists = $zip.Entries | Where-Object { $_.FullName -eq $rutaRelativaArchivo }
+    if (-not $entryExists) {
+        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, "$pathArchivoAZipear", "$rutaRelativaArchivo", $compressionLevel);
+    }
+
+    # Liberamos el recurso
     $zip.Dispose();
 }
 
@@ -122,29 +127,41 @@ function Global:Monitorear {
         [string]$Directorio,
         [string]$Salida
     )
+
     $fechaMonitoreo=Get-Date -Date $Timestamp -Format "yyyyMMdd-HHmmss"
     $logPath = "$Salida/log-$fechaMonitoreo.txt"
-    New-Item -ItemType File -Path "$logPath"
+
+    # Convertir el directorio monitoreado a ruta absoluta si es relativo
+    $rutaDirectorioAbs = $(Resolve-Path "$Directorio").Path
 
     #Añadimos el reporte al archivo log
     $name = [System.IO.Path]::GetFileName($FullPath)
     $size = (Get-Item $FullPath).length
 
     # Buscar archivos duplicados por nombre y tamaño
-    $duplicates = Get-ChildItem -Path $Directorio -Recurse | Where-Object { $_.Name -eq $name -and $_.Length -eq $size }
-
-    if ($duplicates.Count -gt 1) {
-        $existingLog = Get-Content $logPath
-        if (-not $existingLog) {
-            Add-Content -Path $logPath -Value "INFO | Archivo duplicado encontrado: $name"
+    $duplicates = Get-ChildItem -Path $Dir -Recurse | Where-Object {
+        $_.Name -eq $name -and $_.Length -eq $size -and $_.FullName -ne $FullPath
+    }
+    if ($duplicates.Count -gt 0) {
+        # Crear el archivo log si no existe
+        if (-not (Test-Path $logPath)) {
+            New-Item -ItemType File -Path "$logPath" -Force
         }
         
+        # Evitar duplicar mensajes de log
+        if (-not (Select-String -Path $logPath -Pattern "INFO | Archivo duplicado encontrado: $name")) {
+            Add-Content -Path $logPath -Value "INFO | Archivo duplicado encontrado: $name"
+        }
+
+        # Indicamos el nombre del archivo zip
         $zipPath = "$Salida/$fechaMonitoreo.zip"
 
-        # Compress-Archive -Path $duplicates.FullName -DestinationPath $zipPath
-
-        ForEach ($item in $duplicates) {
-            zipear -archivoAZipear $item.FullName -archivoZip $zipPath
+        # Zipear todos los duplicados incluyendo el archivo original
+        $rutaRelativa = [System.IO.Path]::GetRelativePath($rutaDirectorioAbs, $FullPath)
+        zipear -pathArchivoAZipear $FullPath -rutaRelativaArchivo $rutaRelativa -nombreZip $zipPath
+        foreach ($item in $duplicates) {
+            $rutaRelativaItem = [System.IO.Path]::GetRelativePath($rutaDirectorioAbs, $item.FullName)
+            zipear -pathArchivoAZipear $item.FullName -rutaRelativaArchivo $rutaRelativaItem -nombreZip $zipPath
         }
     }
 
@@ -158,11 +175,8 @@ function CrearMonitor {
 
     # Convertir la ruta relativa a absoluta
     $Directorio = Resolve-Path -Path $Directorio
-    $Salida = Resolve-Path -Path $Salida
+    $SalidaLogs = Resolve-Path -Path $Salida
 
-    $global:dir = $Directorio
-    $global:SalidaLogs = $Salida
-    Write-Host $Directorio
     # Crear el FileSystemWatcher
     $global:watcher = New-Object System.IO.FileSystemWatcher
     $watcher.Path = $Directorio
@@ -179,6 +193,7 @@ function CrearMonitor {
 
         Monitorear -FullPath $FullPath -Timestamp $Timestamp -Directorio $Directorio -Salida $SalidaLogs
     }
+
     $global:handlers = . {
         Register-ObjectEvent $watcher -EventName Changed -Action $action -SourceIdentifier "ChangedEvent" 
         Register-ObjectEvent $watcher -EventName Created -Action $action -SourceIdentifier "CreatedEvent"
@@ -191,7 +206,7 @@ function CrearMonitor {
             Start-Sleep -Seconds 1  # Evitar el consumo excesivo de CPU
         }
     }
-
+    
     $jobId = $job.Id
 
     Set-Content -Path $pidFile -Value $jobId
@@ -262,9 +277,13 @@ function FinalizarDemonio {
     }
 }
 
+$global:Directorio = $Directorio
+$global:Salida = $Salida
+
 # Procesar parámetros
 if ($Kill) {
     FinalizarDemonio -Directorio $Directorio
 } else {
-    IniciarDemonio -Directorio $Directorio -Salida $Salida
+    IniciarDemonio -Directorio $Directorio -Salida $Salida
 }
+
