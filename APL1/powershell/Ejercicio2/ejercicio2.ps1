@@ -61,27 +61,37 @@ param (
 # Constantes para manejar errores
 $Script:ERROR_PRODUCTO_TRASPONER_JUNTOS = 1
 $Script:ERROR_ARCHIVO_NO_ENCONTRADO = 2
-$Script:ERROR_MATRIZ_INVALIDA = 3
-$Script:ERROR_SEPARADOR_INVALIDO = 4
-$Script:ERROR_PRODUCTO_TRASPONER_FALTANTES = 5
+$Script:ERROR_ARCHIVO_NO_VALIDO = 3
+$Script:ERROR_MATRIZ_INVALIDA = 4
+$Script:ERROR_SEPARADOR_INVALIDO = 5
+$Script:ERROR_PRODUCTO_TRASPONER_FALTANTES = 6
 
 
 
 # Validaciones de parámetros
+# Verificar que se haya enviado al menos uno de las operaciones
 if(-not($producto) -and -not($trasponer)){
     Write-Error "Debe elegir usar -producto o -trasponer."
     exit $ERROR_PRODUCTO_TRASPONER_FALTANTES
 }
 
 
+# Verificar que no se hayan enviado ambas operacioens juntas
 if ($producto -and $trasponer) {
     Write-Error "No se puede usar -producto y -trasponer juntos."
     exit $ERROR_PRODUCTO_TRASPONER_JUNTOS
 }
 
+# Verificar que matriz exista
 if (-not (Test-Path $matriz)) {
     Write-Error "El archivo de matriz no existe."
     exit $ERROR_ARCHIVO_NO_ENCONTRADO
+}
+
+# Verificar que el path sea un archivo y no un directorio
+if ((Test-Path $matriz -PathType Leaf) -eq $false) {
+    Write-Error "El parámetro 'matriz' debe ser un archivo y no un directorio."
+    exit $ERROR_ARCHIVO_NO_VALIDO
 }
 
 # Leer el archivo de matriz
