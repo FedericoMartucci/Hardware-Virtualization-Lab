@@ -257,20 +257,19 @@ function FinalizarDemonio {
 
         # Detener el proceso del trabajo en segundo plano
         Stop-Job -Id $pidDelArchivo
-        Unregister-Event -SourceIdentifier "ChangedEvent"
-        Unregister-Event -SourceIdentifier "CreatedEvent"
-        Unregister-Event -SourceIdentifier "RenamedEvent"
+        $handlers | ForEach-Object {
+            Unregister-Event -SourceIdentifier $_.Name
+        }
         Remove-Job -Id $pidDelArchivo
         Remove-Item $pidFile
         
-        # event handlers are technically implemented as a special kind
-        # of background job, so remove the jobs now:
+        # Los event handlers son tecnicamente implementados como un tipo de
+        # job en segundo plano, con lo cual lo eliminamos:
         $handlers | Remove-Job
         
-        # properly dispose the FileSystemWatcher:
+        # Liberamos el recurso del FileSystemWatcher:
         $watcher.Dispose()
         
-        # Write-Warning "Event Handler disabled, monitoring ends."
         Write-Host "El demonio ha sido detenido." -ForegroundColor Yellow
     } else {
         Write-Host "No se encontró ningún demonio activo para el directorio '$Directorio'." -ForegroundColor Red
