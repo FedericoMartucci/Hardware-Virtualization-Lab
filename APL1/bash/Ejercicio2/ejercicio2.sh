@@ -112,8 +112,16 @@ archivo_matriz=""
 escalar=""
 transponer="false"
 
+opciones=$(getopt -o m:p:s:th --l matriz:,producto:,separador:,trasponer,help -- "$@" 2> /dev/null);
 
-while [[ "$#" -gt 0 ]]; do
+if [ "$?" != "0" ]; then
+    echo "Opcion/es incorrectas";
+    exit 0;
+fi
+
+eval set -- "$opciones";
+
+while true; do
   case "$1" in
     -m|--matriz)
       archivo_matriz="$2"
@@ -133,6 +141,10 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     -h|--help)
       ayuda
+      ;;
+    --)
+      shift;
+      break;
       ;;
     *)
       echo "Error: Opción desconocida $1"
@@ -161,6 +173,11 @@ fi
 # Validar que el separador no sea un número o el símbolo "-"
 if [[ "$separador" =~ [0-9\-] ]]; then
   echo "Error: El separador no puede ser un número ni el símbolo menos."
+  exit 1
+fi
+
+if [[ ! "$escalar" =~ ^-?[0-9]+([.][0-9]+)?$ ]] ; then
+  echo "Error: El valor del parámetro --producto debe ser un número."
   exit 1
 fi
 

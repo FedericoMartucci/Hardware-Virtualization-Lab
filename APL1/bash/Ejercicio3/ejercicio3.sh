@@ -98,7 +98,8 @@ while true; do
             shift;
             break;
             ;;
-        *)echo "Error: Opción desconocida $1"
+        *)
+            echo "Error: Opción desconocida $1"
             ayuda
             ;; 
     esac
