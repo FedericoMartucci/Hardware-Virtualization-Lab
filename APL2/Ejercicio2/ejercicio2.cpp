@@ -36,7 +36,7 @@ void search_in_file(int thread_id, const string& search_string) {
             if (line.find(search_string) != string::npos) {
                 lock_guard<mutex> lock(mtx);
                 cout << "Thread " << thread_id << ": " << current_file.filename() 
-                     << " - Line " << line_number << ": " << line << endl;
+                     << " - Linea " << line_number << endl;
             }
             ++line_number;
         }
