@@ -25,28 +25,32 @@
 #include <cstring>
 #include <set>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/stat.h>
+
+using namespace std;
 
 #define FIFO_PATH "/tmp/fifo"
 
-std::set<std::string> validIDs; // Para almacenar los IDs válidos
-std::ofstream logFile;
+set<string> validIDs;  // Para almacenar los IDs válidos
+ofstream archivoLog;
+const char* FILE_IDS = "ids_validos.txt";
 
 // Función que captura las señales y finaliza el demonio de manera segura
-void signalHandler(int signum)
+void senialHandler(int signum)
 {
-    std::cout << "Terminando demonio por señal: " << signum << std::endl;
-    if (logFile.is_open())
+    cout << "Terminando demonio por señal: " << signum << endl;
+    if (archivoLog.is_open())
     {
-        std::cout << "Demonio finalizado correctamente." << std::endl;
-        logFile.close();
+        cout << "Demonio finalizado correctamente." << endl;
+        archivoLog.close();
     }
-    std::remove(FIFO_PATH);
+    unlink(FIFO_PATH);
     exit(signum);
 }
 
-// Función para obtener la fecha y hora actual
-std::string currentDateTime()
+
+string calcularFechaActual()
 {
     time_t now = time(0);
     char buf[80];
@@ -55,17 +59,18 @@ std::string currentDateTime()
     return buf;
 }
 
-bool loadValidIDs()
+// Cargar los IDs válidos desde el archivo ids_validos.txt
+bool cargarIDsValidos()
 {
-    std::ifstream validIdsFile("fingerprint_db.txt");
+    ifstream validIdsFile(FILE_IDS);
     if (!validIdsFile.is_open())
     {
-        std::cerr << "Error al abrir el archivo de IDs válidos: " << "fingerprint_db.txt" << std::endl;
+        cerr << "Error al abrir el archivo de IDs válidos: " << FILE_IDS << endl;
         return false;
     }
 
-    std::string id;
-    while (std::getline(validIdsFile, id))
+    string id;
+    while (getline(validIdsFile, id))
     {
         validIDs.insert(id);
     }
@@ -80,20 +85,22 @@ void createDaemon()
     pid_t pid = fork();
     if (pid < 0)
     {
-        std::cerr << "Error al hacer fork." << std::endl;
+        cerr << "Error al hacer fork." << endl;
         exit(1);
     }
     if (pid > 0)
     {
-        exit(0); // Termina el proceso padre
+        exit(0);  // Termina el proceso padre
     }
 
     // Crear un nuevo sesión de líder
     if (setsid() < 0)
     {
-        std::cerr << "Error al crear una nueva sesión." << std::endl;
+        cerr << "Error al crear una nueva sesión." << endl;
         exit(1);
     }
+
+    cout << "El PID es: " << getpid() << endl;
 
     // Cambiar el directorio de trabajo
     chdir("/");
@@ -106,7 +113,7 @@ void createDaemon()
 
 int main(int argc, char *argv[])
 {
-    std::string logPath;
+    string logPath;
 
     // Procesar los parámetros de entrada (orden flexible)
     for (int i = 1; i < argc; ++i)
@@ -116,37 +123,38 @@ int main(int argc, char *argv[])
             if (i + 1 < argc)
             {
                 logPath = argv[i + 1];
-                ++i; // Saltar al siguiente parámetro
+                ++i;  // Saltar al siguiente parámetro
             }
             else
             {
-                std::cerr << "Error: Falta el nombre del archivo de log." << std::endl;
+                cerr << "Error: Falta el nombre del archivo de log." << endl;
                 return 1;
             }
         }
         else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0)
         {
-            std::cout << "Uso: " << argv[0] << " --log <log_file>" << std::endl;
+            cout << "Uso: " << argv[0] << " --log <log_file>" << endl;
+            cout << "Uso: " << "El archivo de logs donde se iran registrando las huellas de los distintos lectores" << endl;
             return 0;
         }
     }
 
     if (logPath.empty())
     {
-        std::cerr << "Error: Parámetro --log es obligatorio." << std::endl;
+        cerr << "Error: Parámetro --log es obligatorio." << endl;
         return 1;
     }
 
     // Abrir archivo de log usando fstream
-    logFile.open(logPath, std::ios::out | std::ios::app);
-    if (!logFile.is_open())
+    archivoLog.open(logPath, ios::out | ios::app);
+    if (!archivoLog.is_open())
     {
-        std::cerr << "Error abriendo archivo de log: " << logPath << std::endl;
+        cerr << "Error abriendo archivo de log: " << logPath << endl;
         return 1;
     }
 
-    // Cargar IDs válidos
-    if (!loadValidIDs())
+
+    if (!cargarIDsValidos())
     {
         return 1;
     }
@@ -154,17 +162,17 @@ int main(int argc, char *argv[])
     // Crear el FIFO si no existe
     if (mkfifo(FIFO_PATH, 0666) == -1)
     {
-        std::cerr << "Error creando el FIFO: " << FIFO_PATH << std::endl;
+        cerr << "Error creando el FIFO: " << FIFO_PATH << endl;
         return 1;
     }
 
     // Capturar señales para terminación segura
-    signal(SIGINT, signalHandler);
-    signal(SIGTERM, signalHandler);
-
-    std::ifstream fifoStream;
+    signal(SIGINT, senialHandler);
+    signal(SIGTERM, senialHandler);
 
     createDaemon();
+
+    ifstream fifoStream;
 
     // Bucle principal para leer del FIFO y escribir en el log
     while (true)
@@ -172,31 +180,31 @@ int main(int argc, char *argv[])
         fifoStream.open(FIFO_PATH);
         if (!fifoStream.is_open())
         {
-            std::cerr << "Error al abrir el FIFO para lectura: " << FIFO_PATH << std::endl;
+            cerr << "Error al abrir el FIFO para lectura: " << FIFO_PATH << endl;
             continue;
         }
 
-        std::string line;
-        while (std::getline(fifoStream, line))
+        string linea;
+        while (getline(fifoStream, linea))
         {
-            std::istringstream iss(line);
-            std::string sensorNumber, sensorID;
-            iss >> sensorNumber >> sensorID;
+            istringstream iss(linea);
+            string nroSensor, sensorID;
+            iss >> nroSensor >> sensorID;
 
-            if (sensorNumber.empty() || sensorID.empty())
+            if (!nroSensor.empty() && !sensorID.empty())
             {
-                continue;
+                string status = validIDs.count(sensorID) ? "[VÁLIDA]" : "[INVÁLIDA]";
+                archivoLog << "[" << calcularFechaActual() << "] "
+                        << "Sensor " << nroSensor << " - Huella: " << sensorID
+                        << " " << status << endl;
+                archivoLog.flush();  // Nos aseguramos de volcar la info al archivo
             }
-
-            std::string status = validIDs.count(sensorID) ? "[VÁLIDA]" : "[INVÁLIDA]";
-            logFile << "[" << currentDateTime() << "] "
-                    << "Sensor " << sensorNumber << " - Huella: " << sensorID
-                    << " " << status << std::endl;
         }
 
         fifoStream.close();
-        sleep(1); // Pausa para evitar carga excesiva
+        sleep(1);  // Pausa para evitar carga excesiva
     }
+
 
     return 0;
 }
