@@ -96,7 +96,9 @@ void manejarSIGUSR1(int signal)
 void limpiarRecursos(int signal)
 {
     // Liberamos recursos del cliente en caso de haber partida.
-    kill(mc->cliente_pid, SIGUSR1);
+    if(mc->cliente_pid != 0)
+        kill(mc->cliente_pid, SIGUSR1);
+
     // Liberamos memoria compartida
     if (mc) {
         munmap(mc, sizeof(MemoriaCompartida));
@@ -126,6 +128,8 @@ void limpiarRecursos(int signal)
         close(lock_fd);
         unlink(LOCK_FILE);
     }
+    
+    exit(EXIT_SUCCESS);
 }
 
 void crearMemoriaCompartida() {

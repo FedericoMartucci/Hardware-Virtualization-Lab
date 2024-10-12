@@ -1,12 +1,25 @@
-all: cliente servidor
+COMPILER = g++
 
-servidor:
-	g++ Servidor.cpp -o Servidor -lpthread -lrt
+COMPILER_FLAGS = -std=c++17 -Wall 
 
-cliente: 
-	g++ Cliente.cpp -o Cliente -lpthread -lrt
+CLIENT_SRC = Cliente.cpp
+SERVER_SRC = Servidor.cpp
+CLIENT_EXEC = Cliente.exe
+SERVER_EXEC = Servidor.exe
+
+all: $(CLIENT_EXEC) $(SERVER_EXEC)
+
+
+$(CLIENT_EXEC): $(CLIENT_SRC)
+	$(COMPILER) $(COMPILER_FLAGS) -o $(CLIENT_EXEC) $(CLIENT_SRC)
+
+
+$(SERVER_EXEC): $(SERVER_SRC)
+	$(COMPILER) $(COMPILER_FLAGS) -o $(SERVER_EXEC) $(SERVER_SRC)
 
 
 clean:
-	rm Servidor
-	rm Cliente
+	rm -f $(CLIENT_EXEC) $(SERVER_EXEC) 
+
+
+rebuild: clean all

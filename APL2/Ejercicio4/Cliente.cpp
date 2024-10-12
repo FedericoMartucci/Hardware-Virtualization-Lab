@@ -70,19 +70,23 @@ void mostrarAyuda() {
     cout << "  -h, --help      Muestra esta ayuda.\n";
 }
 
+void limpiarRecursos(int signal) {
+    close(lock_fd);
+    unlink(LOCK_FILE);
+    exit(EXIT_SUCCESS);
+}
+
 void manejarSIGUSR1(int signal)
 {
     cout << "Recibida señal SIGUSR1. Finalizando cliente..." << endl;
-    close(lock_fd);
-    unlink(LOCK_FILE);
-    exit(0);
+    limpiarRecursos(signal);
 }
 
 int main(int argc, char *argv[]) {
     // Validar parámetros
     if (argc < 3) {
         mostrarAyuda();
-        return 1;
+        return EXIT_FAILURE;
     }
 
     string nickname;
@@ -96,20 +100,22 @@ int main(int argc, char *argv[]) {
             } else {
                 cerr << "Error: Se requiere un nombre de jugador después de " << argv[i] << endl;
                 mostrarAyuda();
-                return 1;
+                return EXIT_FAILURE;
             }
         } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             mostrarAyuda();
-            return 0;
+            return EXIT_SUCCESS;
         } else {
             cerr << "Parámetro desconocido: " << argv[i] << endl;
             mostrarAyuda();
-            return 1;
+            return EXIT_FAILURE;
         }
     }
 
     // Ignorar SIGINT
     signal(SIGINT, SIG_IGN);
+    signal(SIGTERM, limpiarRecursos);
+    signal(SIGHUP, limpiarRecursos);
     signal(SIGUSR1, manejarSIGUSR1);
 
     // Crear archivo de bloqueo para evitar tener dos clientes en simultaneo.
@@ -130,6 +136,7 @@ int main(int argc, char *argv[]) {
     idMemoria = shm_open(MEMORIA_COMPARTIDA, O_CREAT | O_RDWR, 0600);
     if (idMemoria == -1) {
         perror("Error al leer memoria compartida");
+        limpiarRecursos(0);
         exit(EXIT_FAILURE);
     }
 
@@ -137,6 +144,7 @@ int main(int argc, char *argv[]) {
         PROT_READ | PROT_WRITE, MAP_SHARED, idMemoria, 0);
     if (mc == MAP_FAILED) {
         perror("Error al mapear la memoria compartida");
+        limpiarRecursos(0);
         exit(EXIT_FAILURE);
     }
 
@@ -144,19 +152,22 @@ int main(int argc, char *argv[]) {
     sem_cliente = sem_open(SEM_CLIENTE, 0);
     if (sem_cliente == SEM_FAILED) {
         cerr << "Error al conectar al semáforo del cliente." << endl;
-        return 1;
+        limpiarRecursos(0);
+        exit(EXIT_FAILURE);
     }
 
     sem_servidor = sem_open(SEM_SERVIDOR, 0);
     if (sem_servidor == SEM_FAILED) {
         cerr << "Error al conectar al semáforo del servidor." << endl;
-        return 1;
+        limpiarRecursos(0);
+        exit(EXIT_FAILURE);
     }
 
     sem_puntos = sem_open(SEM_PUNTOS, 0);
     if (sem_puntos == SEM_FAILED) {
         cerr << "Error al conectar al semáforo del servidor." << endl;
-        return 1;
+        limpiarRecursos(0);
+        exit(EXIT_FAILURE);
     }
 
     // Iniciar la comunicación
