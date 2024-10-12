@@ -77,6 +77,51 @@ void mostrarAyuda()
     cout << "  -h, --help      Muestra esta ayuda.\n";
 }
 
+void procesarArgumentos(int argc, char *argv[], const char *&archivo, int &cantPreguntas, int &cantUsuarios, int &puerto) {
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-a") == 0 || strcmp(argv[i], "--archivo") == 0) {
+            if (i + 1 < argc) {
+                archivo = argv[++i];
+            } else {
+                cerr << "Error: Se requiere un archivo después de " << argv[i] << endl;
+                mostrarAyuda();
+                exit(EXIT_FAILURE);
+            }
+        } else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--cantidad") == 0) {
+            if (i + 1 < argc) {
+                cantPreguntas = stoi(argv[++i]);
+            } else {
+                cerr << "Error: Se requiere una cantidad después de " << argv[i] << endl;
+                mostrarAyuda();
+                exit(EXIT_FAILURE);
+            }
+        } else if (strcmp(argv[i], "-u") == 0 || strcmp(argv[i], "--usuarios") == 0) {
+            if (i + 1 < argc) {
+                cantUsuarios = stoi(argv[++i]);
+            } else {
+                cerr << "Error: Se requiere un cantidad de usuarios después de " << argv[i] << endl;
+                mostrarAyuda();
+                exit(EXIT_FAILURE);
+            }
+        } else if (strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--puerto") == 0) {
+            if (i + 1 < argc) {
+                puerto = stoi(argv[++i]);
+            } else {
+                cerr << "Error: Se requiere un puerto después de " << argv[i] << endl;
+                mostrarAyuda();
+                exit(EXIT_FAILURE);
+            }
+        } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+            mostrarAyuda();
+            exit(EXIT_SUCCESS);
+        } else {
+            cerr << "Parámetro desconocido: " << argv[i] << endl;
+            mostrarAyuda();
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
 void validarParametros(int cantUsuarios, int puerto, int cantPreguntas)
 {
     // Validamos que la cantidad sea un numero positivo mayor a 0.
@@ -343,12 +388,6 @@ void hilo(int socketId)
 
 int main(int argc, char *argv[])
 {
-    if (argc < 9)
-    {
-        mostrarAyuda();
-        exit(EXIT_FAILURE);
-    }
-
     const char *archivo = nullptr;
     int cantPreguntas = 0;
     int puerto = 0;
@@ -356,82 +395,23 @@ int main(int argc, char *argv[])
     int preguntasCargadas;
     int socketServidor;
 
-    // Procesar argumentos
-    for (int i = 1; i < argc; i++)
+    if (argc < 9)
     {
-        if (strcmp(argv[i], "-a") == 0 || strcmp(argv[i], "--archivo") == 0)
-        {
-            if (i + 1 < argc)
-            {
-                archivo = argv[++i];
-            }
-            else
-            {
-                cerr << "Error: Se requiere un archivo después de " << argv[i] << endl;
-                mostrarAyuda();
-                exit(EXIT_FAILURE);
-            }
-        }
-        else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--cantidad") == 0)
-        {
-            if (i + 1 < argc)
-            {
-                cantPreguntas = std::stoi(argv[++i]);
-            }
-            else
-            {
-                cerr << "Error: Se requiere una cantidad después de " << argv[i] << endl;
-                mostrarAyuda();
-                exit(EXIT_FAILURE);
-            }
-        }
-        else if (strcmp(argv[i], "-u") == 0 || strcmp(argv[i], "--usuarios") == 0)
-        {
-            if (i + 1 < argc)
-            {
-                cantUsuarios = stoi(argv[++i]);
-            }
-            else
-            {
-                cerr << "Error: Se requiere un cantidad de usuarios después de " << argv[i] << endl;
-                mostrarAyuda();
-                exit(EXIT_FAILURE);
-            }
-        }
-        else if (strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--puerto") == 0)
-        {
-            if (i + 1 < argc)
-            {
-                puerto = stoi(argv[++i]);
-            }
-            else
-            {
-                cerr << "Error: Se requiere una puerto después de " << argv[i] << endl;
-                mostrarAyuda();
-                exit(EXIT_FAILURE);
-            }
-        }
-        else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
-        {
-            mostrarAyuda();
-            exit(EXIT_SUCCESS);
-        }
-        else
-        {
-            cerr << "Parámetro desconocido: " << argv[i] << endl;
-            mostrarAyuda();
-            exit(EXIT_FAILURE);
-        }
+        mostrarAyuda();
+        exit(EXIT_FAILURE);
     }
 
+    // Procesamos y validamos los argumentos
+    procesarArgumentos(argc, argv, archivo, cantPreguntas, cantUsuarios, puerto);
     validarParametros(cantUsuarios, puerto, cantPreguntas);
 
+    // Manejamos las señales
     signal(SIGINT, SIG_IGN);
     signal(SIGTERM, limpiarRecursos);
     signal(SIGHUP, limpiarRecursos);
     signal(SIGUSR1, manejarSIGUSR1);
 
-    // Crear archivo de bloqueo para evitar tener dos servidores en simultaneo.
+    // Creamos archivo de bloqueo para evitar tener dos servidores en simultáneo.
     lock_fd = open(LOCK_FILE, O_CREAT | O_RDWR, 0666);
     if (lock_fd == -1)
     {
