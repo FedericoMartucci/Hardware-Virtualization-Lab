@@ -232,46 +232,114 @@ int cargarPreguntas(const char *archivo, int cantidadRecibida)
 
         cantidadDePreguntas++;
     }
-    
+
     file.close();
     return cantidadDePreguntas;
 }
 
-void handle_client(int client_socket, std::map<int, ClientInfo> &clients, std::vector<std::string> &questions)
-{
-    char buffer[1024];
-    int question_index = 0;
+int configurarSocket(int cantUsuarios, int puerto) {
+    struct sockaddr_in serverConfig;
+    int socketEscucha;
 
-    while (true)
+    memset(&serverConfig, '0', sizeof(serverConfig));
+
+    serverConfig.sin_family = AF_INET; // IPV4: 127.0.0.1
+    serverConfig.sin_addr.s_addr = htonl(INADDR_ANY);
+    serverConfig.sin_port = htons(puerto); // Es recomendable que el puerto sea mayor a 1023 para aplicaciones de usuario.
+
+    // Creamos el socket
+    if ((socketEscucha = socket(AF_INET, SOCK_STREAM, 0)) == 0)
     {
-        memset(buffer, 0, sizeof(buffer));
-        int valread = read(client_socket, buffer, 1024);
-
-        if (valread == 0)
-        {
-            std::cout << "Cliente desconectado." << std::endl;
-            close(client_socket);
-            return;
-        }
-
-        std::string client_response(buffer);
-        std::cout << "Respuesta del cliente: " << client_response << std::endl;
-
-        // Enviar la siguiente pregunta
-        if (question_index < questions.size())
-        {
-            std::string question = questions[question_index];
-            send(client_socket, question.c_str(), question.size(), 0);
-            question_index++;
-        }
-        else
-        {
-            std::string end_msg = "Fin del juego.";
-            send(client_socket, end_msg.c_str(), end_msg.size(), 0);
-            break;
-        }
+        perror("Creación de socket fallida.");
+        exit(EXIT_FAILURE);
     }
+
+    // Asociamos socket al puerto recibido
+    if (bind(socketEscucha, (struct sockaddr *)&serverConfig, sizeof(serverConfig)) < 0)
+    {
+        perror("Bind fallido.");
+        exit(EXIT_FAILURE);
+    }
+
+    // Escuchar conexiones
+    if (listen(socketEscucha, cantUsuarios) < 0)
+    {
+        perror("Configuración de escucha de conexiones fallida.");
+        exit(EXIT_FAILURE);
+    }
+
+    return socketEscucha;
 }
+
+void hilo(int socketId)
+{
+    time_t ticks = time(NULL);
+    char sendBuff[2000];
+    snprintf(sendBuff, sizeof(sendBuff), "%.24s\r\n", ctime(&ticks));
+
+    write(socketId, sendBuff, strlen(sendBuff));
+    close(socketId);
+}
+
+// while (true)
+// {
+//     mc->cliente_pid = 0;
+//     sem_post(sem_servidor);
+//     sem_wait(sem_cliente); // Esperamos al cliente
+//     mc->puntos = 0;
+//     std::cout << "Cliente conectado.\n";
+
+//     // Mostramos preguntas y procesamos respuestas
+//     for (int i = 0; i < preguntasCargadas; ++i)
+//     {
+//         // Esperamos respuesta del cliente
+//         sem_wait(sem_cliente);
+//         // Leemos respuesta del cliente
+//         if (mc->preguntas[i].respuestaCliente == mc->preguntas[i].respuestaCorrecta)
+//         {
+//             mc->puntos++;
+//         }
+//     }
+//     sem_post(sem_puntos); // Permitimos al cliente finalizar
+//     std::cout << "Fin de la partida. Esperando usuario...\n";
+// }
+
+
+// void handle_client(int client_socket, std::map<int, ClientInfo> &clients, std::vector<std::string> &questions)
+// {
+//     char buffer[1024];
+//     int question_index = 0;
+
+//     while (true)
+//     {
+//         memset(buffer, 0, sizeof(buffer));
+//         int valread = read(client_socket, buffer, 1024);
+
+//         if (valread == 0)
+//         {
+//             std::cout << "Cliente desconectado." << std::endl;
+//             close(client_socket);
+//             return;
+//         }
+
+//         std::string client_response(buffer);
+//         std::cout << "Respuesta del cliente: " << client_response << std::endl;
+
+//         // Enviar la siguiente pregunta
+//         if (question_index < questions.size())
+//         {
+//             std::string question = questions[question_index];
+//             send(client_socket, question.c_str(), question.size(), 0);
+//             question_index++;
+//         }
+//         else
+//         {
+//             std::string end_msg = "Fin del juego.";
+//             send(client_socket, end_msg.c_str(), end_msg.size(), 0);
+//             break;
+//         }
+//     }
+// }
 
 int main(int argc, char *argv[])
 {
@@ -285,6 +353,8 @@ int main(int argc, char *argv[])
     int cantPreguntas = 0;
     int puerto = 0;
     int cantUsuarios = 0;
+    int preguntasCargadas;
+    int socketServidor;
 
     // Procesar argumentos
     for (int i = 1; i < argc; i++)
@@ -376,94 +446,19 @@ int main(int argc, char *argv[])
     }
 
     // Cargamos las preguntas del archivo csv
-    mc->preguntasCargadas = cargarPreguntas(archivo, cantidad);
+    preguntasCargadas = cargarPreguntas(archivo, cantPreguntas);
 
+    // Configuramos el socket
+    socketServidor = configurarSocket(cantUsuarios, puerto);
 
-    int server_fd, new_socket;
-    struct sockaddr_in address;
-    int opt = 1;
-    int addrlen = sizeof(address);
-    std::map<int, ClientInfo> clients;
-    std::vector<std::string> questions;
-    int PORT = 8080;
-
-    // Leer archivo de preguntas
-    std::ifstream file("preguntas.txt");
-    std::string question;
-    while (std::getline(file, question))
-    {
-        questions.push_back(question);
-    }
-    file.close();
-
-    // Crear socket
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
-    {
-        perror("Socket fallido");
-        exit(EXIT_FAILURE);
-    }
-
-    // Forzar reutilización de puerto
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
-    {
-        perror("Setsockopt fallido");
-        exit(EXIT_FAILURE);
-    }
-
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT);
-
-    // Asociar socket a puerto
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0)
-    {
-        perror("Bind fallido");
-        exit(EXIT_FAILURE);
-    }
-
-    // Escuchar conexiones
-    if (listen(server_fd, 3) < 0)
-    {
-        perror("Escuchar fallido");
-        exit(EXIT_FAILURE);
-    }
-
-    std::cout << "Servidor escuchando en el puerto " << PORT << std::endl;
+    std::cout << "Servidor escuchando en el puerto " << puerto << std::endl;
 
     while (true)
     {
-        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0)
-        {
-            perror("Aceptación fallida");
-            exit(EXIT_FAILURE);
-        }
-
-        // Manejar cliente en un nuevo hilo
-        std::thread client_thread(handle_client, new_socket, std::ref(clients), std::ref(questions));
-        client_thread.detach();
-    }
-
-    while (true)
-    {
-        mc->cliente_pid = 0;
-        sem_post(sem_servidor);
-        sem_wait(sem_cliente); // Esperamos al cliente
-        mc->puntos = 0;
-        std::cout << "Cliente conectado.\n";
-
-        // Mostramos preguntas y procesamos respuestas
-        for (int i = 0; i < mc->preguntasCargadas; ++i)
-        {
-            // Esperamos respuesta del cliente
-            sem_wait(sem_cliente);
-            // Leemos respuesta del cliente
-            if (mc->preguntas[i].respuestaCliente == mc->preguntas[i].respuestaCorrecta)
-            {
-                mc->puntos++;
-            }
-        }
-        sem_post(sem_puntos); // Permitimos al cliente finalizar
-        std::cout << "Fin de la partida. Esperando usuario...\n";
+        int socketComunicacion = accept(socketServidor, (struct sockaddr *)NULL, NULL);
+        
+        thread th(hilo, socketComunicacion);
+        th.detach();
     }
 
     printf("Finalizando servidor...\n");
