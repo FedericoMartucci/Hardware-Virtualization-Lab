@@ -29,6 +29,12 @@
 #include <vector>
 #include <regex>
 #include <cstdlib>
+#include <time.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
 
 using namespace std;
 
@@ -144,30 +150,55 @@ void conectarSemaforos()
 {
     sem_cliente = sem_open(SEM_CLIENTE, 0);
     if (sem_cliente == SEM_FAILED) {
-        cerr << "Error al conectar al semáforo del cliente." << endl;
+        cerr << "Error al conectar con el servidor." << endl;
         limpiarRecursos(0);
         exit(EXIT_FAILURE);
     }
 
     sem_servidor = sem_open(SEM_SERVIDOR, 0);
     if (sem_servidor == SEM_FAILED) {
-        cerr << "Error al conectar al semáforo del servidor." << endl;
+        cerr << "Error al conectar con el servidor." << endl;
         limpiarRecursos(0);
         exit(EXIT_FAILURE);
     }
 
     sem_puntos = sem_open(SEM_PUNTOS, 0);
     if (sem_puntos == SEM_FAILED) {
-        cerr << "Error al conectar al semáforo del servidor." << endl;
+        cerr << "Error al conectar con el servidor." << endl;
         limpiarRecursos(0);
         exit(EXIT_FAILURE);
     }
 }
 
+int configurarSocket(const char* servidor, int puerto) {
+    struct sockaddr_in clientConfig;
+    int socketComunicacion;
+
+    memset(&clientConfig, '0', sizeof(clientConfig));
+
+    clientConfig.sin_family = AF_INET;
+    clientConfig.sin_port = htons(puerto);
+    inet_pton(AF_INET, servidor, &clientConfig.sin_addr);
+
+    socketComunicacion = socket(AF_INET, SOCK_STREAM, 0);
+
+    int resultadoConexion = connect(socketComunicacion, (struct sockaddr *)&clientConfig, sizeof(clientConfig));
+
+    if (resultadoConexion < 0)
+    {
+        cout << "Error en la conexión" << endl;
+        limpiarRecursos(0);
+        return EXIT_FAILURE;
+    }
+
+    return socketComunicacion;
+}
+
 int main(int argc, char *argv[]) {
     string nickname;
     string servidor;
-    int puerto;
+    int socketCliente;
+    int puerto = 0;
     int contador = 0;
     
     if (argc < 7) {
@@ -188,8 +219,21 @@ int main(int argc, char *argv[]) {
     // Conectamos con los semáforos
     conectarSemaforos();
 
+    // Configuramos el socket para iniciar la comunicación con el servidor.
+    socketCliente = configurarSocket(servidor.c_str(), puerto);
+
+    char buffer[2000];
+    int bytesRecibidos = 0;
+    while ((bytesRecibidos = read(socketCliente, buffer, sizeof(buffer) - 1)) > 0)
+    {
+        buffer[bytesRecibidos] = 0;
+        printf("%s\n", buffer);
+    }
+
+    close(socketCliente);
+
     // Iniciar la comunicación
-    cout << "Bienvenido, " << nickname << ". Esperando preguntas..." << endl;  
+    // cout << "Bienvenido, " << nickname << ". Esperando preguntas..." << endl;  
     
     // // Avisar al servidor que el cliente está listo
     // sem_wait(sem_servidor);
@@ -216,7 +260,5 @@ int main(int argc, char *argv[]) {
     // }
     // sem_wait(sem_puntos);
     // std::cout << "Partida finalizada. Puntos: " << mc->puntos << std::endl;
-
-
-    return 0;
+    return EXIT_SUCCESS;
 }

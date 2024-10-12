@@ -224,6 +224,7 @@ void inicializarSemaforos()
     if (sem_cliente == SEM_FAILED)
     {
         perror("Error al crear semáforo de cliente");
+        limpiarRecursos(0);
         exit(EXIT_FAILURE);
     }
 
@@ -231,8 +232,7 @@ void inicializarSemaforos()
     if (sem_servidor == SEM_FAILED)
     {
         perror("Error al crear semáforo de servidor");
-        sem_close(sem_cliente);
-        sem_unlink(SEM_CLIENTE);
+        limpiarRecursos(0);
         exit(EXIT_FAILURE);
     }
 
@@ -240,10 +240,7 @@ void inicializarSemaforos()
     if (sem_puntos == SEM_FAILED)
     {
         perror("Error al crear semáforo de puntos");
-        sem_close(sem_cliente);
-        sem_unlink(SEM_CLIENTE);
-        sem_close(sem_servidor);
-        sem_unlink(SEM_SERVIDOR);
+        limpiarRecursos(0);
         exit(EXIT_FAILURE);
     }
 }
@@ -431,6 +428,9 @@ int main(int argc, char *argv[])
 
     // Creamos archivo de bloqueo para evitar tener dos servidores en simultáneo.
     crearLockFile();
+
+    // Inicializamos los semaforos
+    inicializarSemaforos();
 
     // Cargamos las preguntas del archivo csv
     preguntasCargadas = cargarPreguntas(archivo, cantPreguntas);
