@@ -64,7 +64,7 @@ sem_t* sem_servidor;
 sem_t* sem_puntos;
 
 void mostrarAyuda() {
-    cout << "Uso: ./cliente --nickname <nombre_jugador>\n";
+    cout << "Uso: ./Cliente.exe --nickname <nombre_jugador>\n";
     cout << "Opciones:\n";
     cout << "  -n, --nickname  Nickname del usuario (Requerido).\n";
     cout << "  -h, --help      Muestra esta ayuda.\n";

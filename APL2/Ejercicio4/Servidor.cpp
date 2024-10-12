@@ -62,7 +62,7 @@ sem_t* sem_servidor;
 sem_t* sem_puntos;
 
 void mostrarAyuda() {
-    std::cout << "Uso: ./servidor -a <archivo> -c <cantidad>\n";
+    std::cout << "Uso: ./Servidor.exe -a <archivo> -c <cantidad>\n";
     std::cout << "Opciones:\n";
     std::cout << "  -a, --archivo   Archivo con las preguntas (Requerido).\n";
     std::cout << "  -c, --cantidad  Cantidad de preguntas por partida (Requerido).\n";
