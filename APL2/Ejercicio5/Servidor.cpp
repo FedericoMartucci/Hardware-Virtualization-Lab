@@ -36,10 +36,10 @@
 
 using namespace std;
 
-const char *SEM_CLIENTE = "/sem_cliente";
-const char *SEM_SERVIDOR = "/sem_servidor";
-const char *SEM_PUNTOS = "/sem_puntos";
-const char *LOCK_FILE = "/tmp/servidor_memoria.lock";
+const char* SEM_CLIENTE = "/sem_cliente";
+const char* SEM_SERVIDOR = "/sem_servidor";
+const char* SEM_PUNTOS = "/sem_puntos";
+const char* LOCK_FILE = "/tmp/servidor_memoria.lock";
 
 // Estructura para cada pregunta
 typedef struct
@@ -142,6 +142,24 @@ void validarParametros(int cantUsuarios, int puerto, int cantPreguntas)
     if (cantPreguntas <= 0)
     {
         cerr << "Error: La cantidad de preguntas debe ser mayor a 0" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+}
+
+void crearLockFile()
+{
+    lock_fd = open(LOCK_FILE, O_CREAT | O_RDWR, 0666);
+    
+    if (lock_fd == -1)
+    {
+        perror("Error al crear archivo de bloqueo");
+        exit(EXIT_FAILURE);
+    }
+
+    if (flock(lock_fd, LOCK_EX | LOCK_NB) == -1)
+    {
+        perror("Error: otro servidor ya está en ejecución");
+        close(lock_fd);
         exit(EXIT_FAILURE);
     }
 }
@@ -412,18 +430,7 @@ int main(int argc, char *argv[])
     signal(SIGUSR1, manejarSIGUSR1);
 
     // Creamos archivo de bloqueo para evitar tener dos servidores en simultáneo.
-    lock_fd = open(LOCK_FILE, O_CREAT | O_RDWR, 0666);
-    if (lock_fd == -1)
-    {
-        perror("Error al crear archivo de bloqueo");
-        exit(EXIT_FAILURE);
-    }
-    if (flock(lock_fd, LOCK_EX | LOCK_NB) == -1)
-    {
-        perror("Error: otro servidor ya está en ejecución");
-        close(lock_fd);
-        exit(EXIT_FAILURE);
-    }
+    crearLockFile();
 
     // Cargamos las preguntas del archivo csv
     preguntasCargadas = cargarPreguntas(archivo, cantPreguntas);
@@ -431,7 +438,7 @@ int main(int argc, char *argv[])
     // Configuramos el socket
     socketServidor = configurarSocket(cantUsuarios, puerto);
 
-    std::cout << "Servidor escuchando en el puerto " << puerto << std::endl;
+    cout << "Servidor escuchando en el puerto " << puerto << endl;
 
     while (true)
     {
