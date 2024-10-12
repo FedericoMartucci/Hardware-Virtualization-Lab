@@ -24,58 +24,88 @@
 #include <sys/file.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <string>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <cstring>
+#include <thread>
+#include <map>
 
 using namespace std;
 
-#define MAX_PREGUNTAS 100  // Máximo número de preguntas en la memoria compartida
-#define MAX_OPCIONES 3     // Máximo número de opciones por pregunta
-#define TAM_PREGUNTA 256   // Tamaño máximo de una pregunta
-
-const char* MEMORIA_COMPARTIDA = "/memoria_compartida";
-const char* SEM_CLIENTE = "/sem_cliente";
-const char* SEM_SERVIDOR = "/sem_servidor";
-const char* SEM_PUNTOS = "/sem_puntos";
-const char* LOCK_FILE = "/tmp/servidor_memoria.lock";
+const char *SEM_CLIENTE = "/sem_cliente";
+const char *SEM_SERVIDOR = "/sem_servidor";
+const char *SEM_PUNTOS = "/sem_puntos";
+const char *LOCK_FILE = "/tmp/servidor_memoria.lock";
 
 // Estructura para cada pregunta
-typedef struct {
-    char pregunta[TAM_PREGUNTA];
-    char opciones[MAX_OPCIONES][TAM_PREGUNTA];
+typedef struct
+{
+    string pregunta;
+    vector<string> opciones;
     int respuestaCorrecta;
-    int respuestaCliente;
 } Pregunta;
 
-// Estructura de memoria compartida
-typedef struct {
-    Pregunta preguntas[MAX_PREGUNTAS];  // Reemplazamos vector por array
+// Estructura para el cliente y su puntaje
+typedef struct
+{
+    int socket;
     int puntos;
-    int preguntasCargadas;
-    pid_t cliente_pid;
-} MemoriaCompartida;
+    int respuestaCliente;
+    string nickname;
+} Jugador;
 
 // Variables globales
-MemoriaCompartida* mc;
-int idMemoria;
+map<pid_t, Jugador> jugadores;
+vector<Pregunta> preguntas;
 int lock_fd;
-sem_t* sem_cliente;
-sem_t* sem_servidor;
-sem_t* sem_puntos;
+sem_t *sem_cliente;
+sem_t *sem_servidor;
+sem_t *sem_puntos;
 
-void mostrarAyuda() {
-    std::cout << "Uso: ./Servidor.exe -a <archivo> -c <cantidad>\n";
-    std::cout << "Opciones:\n";
-    std::cout << "  -a, --archivo   Archivo con las preguntas (Requerido).\n";
-    std::cout << "  -c, --cantidad  Cantidad de preguntas por partida (Requerido).\n";
-    std::cout << "  -h, --help      Muestra esta ayuda.\n";
+void mostrarAyuda()
+{
+    cout << "Uso: ./Servidor.exe -p <puerto> -u <cantidad_de_usuarios> -a <archivo> -c <cantidad_de_preguntas>\n";
+    cout << "Opciones:\n";
+    cout << "  -p, --puerto    Número de puerto (Requerido).\n";
+    cout << "  -u, --usuarios  Cantidad de ususarios a esperar para iniciar la sala (Requerido).\n";
+    cout << "  -a, --archivo   Archivo con las preguntas (Requerido).\n";
+    cout << "  -c, --cantidad  Cantidad de preguntas por partida (Requerido).\n";
+    cout << "  -h, --help      Muestra esta ayuda.\n";
+}
+
+void validarParametros(int cantUsuarios, int puerto, int cantPreguntas)
+{
+    // Validamos que la cantidad sea un numero positivo mayor a 0.
+    if (cantUsuarios <= 0)
+    {
+        cerr << "Error: La cantidad de preguntas debe ser mayor a 0" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    // Validamos que sea un puerto válido.
+    if (puerto < 1024 || puerto > 65535)
+    {
+        cerr << "Error: El puerto debe estar en el rango de 1024 a 65535." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    // Validamos que la cantidad sea un numero positivo mayor a 0.
+    if (cantPreguntas <= 0)
+    {
+        cerr << "Error: La cantidad de preguntas debe ser mayor a 0" << std::endl;
+        exit(EXIT_FAILURE);
+    }
 }
 
 void manejarSIGUSR1(int signal)
 {
-    if (mc->cliente_pid == 0)
+    if (jugadores.empty())
     {
         cout << "Recibida señal SIGUSR1. Finalizando servidor..." << endl;
-        munmap(mc, sizeof(MemoriaCompartida));
-        shm_unlink(MEMORIA_COMPARTIDA);
         sem_close(sem_cliente);
         sem_unlink(SEM_CLIENTE);
         sem_close(sem_servidor);
@@ -84,7 +114,7 @@ void manejarSIGUSR1(int signal)
         sem_unlink(SEM_PUNTOS);
         close(lock_fd);
         unlink(LOCK_FILE);
-        exit(0);
+        exit(EXIT_SUCCESS);
     }
     else
     {
@@ -92,68 +122,37 @@ void manejarSIGUSR1(int signal)
     }
 }
 
-
 void limpiarRecursos(int signal)
 {
-    // Liberamos recursos del cliente en caso de haber partida.
-    if(mc->cliente_pid != 0)
-        kill(mc->cliente_pid, SIGUSR1);
-
-    // Liberamos memoria compartida
-    if (mc) {
-        munmap(mc, sizeof(MemoriaCompartida));
-        shm_unlink(MEMORIA_COMPARTIDA);
-    }
-    
     // Liberamos semáforo del cliente
-    if (sem_cliente) {
+    if (sem_cliente)
+    {
         sem_close(sem_cliente);
         sem_unlink(SEM_CLIENTE);
     }
 
     // Liberamos semáforo del servidor
-    if (sem_servidor) {
+    if (sem_servidor)
+    {
         sem_close(sem_servidor);
         sem_unlink(SEM_SERVIDOR);
     }
 
     // Liberamos semáforo de los puntos
-    if (sem_puntos) {
+    if (sem_puntos)
+    {
         sem_close(sem_puntos);
         sem_unlink(SEM_PUNTOS);
     }
 
     // Liberamos archivo de bloqueo
-    if (lock_fd != -1) {
+    if (lock_fd != -1)
+    {
         close(lock_fd);
         unlink(LOCK_FILE);
     }
-    
+
     exit(EXIT_SUCCESS);
-}
-
-void crearMemoriaCompartida() {
-    idMemoria = shm_open(MEMORIA_COMPARTIDA, O_CREAT | O_RDWR, 0600);
-    if (idMemoria == -1) {
-        perror("Error al crear memoria compartida");
-        limpiarRecursos(0);
-        exit(EXIT_FAILURE);
-    }
-    if (ftruncate(idMemoria, sizeof(MemoriaCompartida)) == -1) {
-        perror("Error al dimensionar la memoria compartida");
-        limpiarRecursos(0);
-        exit(EXIT_FAILURE);
-    }
-}
-
-void mapearMemoriaCompartida() {
-    mc = (MemoriaCompartida*) mmap(NULL, sizeof(MemoriaCompartida),
-        PROT_READ | PROT_WRITE, MAP_SHARED, idMemoria, 0);
-    if (mc == MAP_FAILED) {
-        perror("Error al mapear la memoria compartida");
-        limpiarRecursos(0);
-        exit(EXIT_FAILURE);
-    }
 }
 
 void inicializarSemaforos()
@@ -186,14 +185,20 @@ void inicializarSemaforos()
     }
 }
 
-int cargarPreguntas(const char* archivo, int cantidadRecibida) {
-    std::ifstream file(archivo);
-    std::string linea;
-    int indice = 0;
+int cargarPreguntas(const char *archivo, int cantidadRecibida)
+{
+    ifstream file(archivo);
+    string linea;
+    int cantidadDePreguntas = 0;
 
+    if (!file.is_open()) {
+        cerr << "Error al abrir el archivo." << endl;
+        return -1;
+    }
 
-    while (std::getline(file, linea) && indice < cantidadRecibida) {
-        std::string pregunta, opcion1, opcion2, opcion3;
+    while (getline(file, linea) && cantidadDePreguntas < cantidadRecibida)
+    {
+        string pregunta, opcion1, opcion2, opcion3;
         int respuesta;
 
         size_t pos = linea.find(",");
@@ -201,7 +206,7 @@ int cargarPreguntas(const char* archivo, int cantidadRecibida) {
         linea.erase(0, pos + 1);
 
         pos = linea.find(",");
-        respuesta = std::stoi(linea.substr(0, pos));
+        respuesta = stoi(linea.substr(0, pos));
         linea.erase(0, pos + 1);
 
         pos = linea.find(",");
@@ -214,61 +219,142 @@ int cargarPreguntas(const char* archivo, int cantidadRecibida) {
 
         opcion3 = linea;
 
-        strncpy(mc->preguntas[indice].pregunta, pregunta.c_str(), TAM_PREGUNTA);
-        strncpy(mc->preguntas[indice].opciones[0], opcion1.c_str(), TAM_PREGUNTA);
-        strncpy(mc->preguntas[indice].opciones[1], opcion2.c_str(), TAM_PREGUNTA);
-        strncpy(mc->preguntas[indice].opciones[2], opcion3.c_str(), TAM_PREGUNTA);
-        mc->preguntas[indice].respuestaCorrecta = respuesta;
+        // Creamos el objeto Pregunta
+        Pregunta nuevaPregunta;
+        nuevaPregunta.pregunta = pregunta;
+        nuevaPregunta.opciones.push_back(opcion1);
+        nuevaPregunta.opciones.push_back(opcion2);
+        nuevaPregunta.opciones.push_back(opcion3);
+        nuevaPregunta.respuestaCorrecta = respuesta;
 
-        indice++;
+        // Agregamos la pregunta al vector de preguntas
+        preguntas.push_back(nuevaPregunta);
+
+        cantidadDePreguntas++;
     }
+    
     file.close();
-    return indice;
+    return cantidadDePreguntas;
 }
 
-int main(int argc, char *argv[]) {
-    // Validar parámetros
-    if (argc < 5)
+void handle_client(int client_socket, std::map<int, ClientInfo> &clients, std::vector<std::string> &questions)
+{
+    char buffer[1024];
+    int question_index = 0;
+
+    while (true)
+    {
+        memset(buffer, 0, sizeof(buffer));
+        int valread = read(client_socket, buffer, 1024);
+
+        if (valread == 0)
+        {
+            std::cout << "Cliente desconectado." << std::endl;
+            close(client_socket);
+            return;
+        }
+
+        std::string client_response(buffer);
+        std::cout << "Respuesta del cliente: " << client_response << std::endl;
+
+        // Enviar la siguiente pregunta
+        if (question_index < questions.size())
+        {
+            std::string question = questions[question_index];
+            send(client_socket, question.c_str(), question.size(), 0);
+            question_index++;
+        }
+        else
+        {
+            std::string end_msg = "Fin del juego.";
+            send(client_socket, end_msg.c_str(), end_msg.size(), 0);
+            break;
+        }
+    }
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc < 9)
     {
         mostrarAyuda();
         exit(EXIT_FAILURE);
     }
 
-    const char* archivo = nullptr;
-    int cantidad = 0;
+    const char *archivo = nullptr;
+    int cantPreguntas = 0;
+    int puerto = 0;
+    int cantUsuarios = 0;
 
     // Procesar argumentos
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-a") == 0 || strcmp(argv[i], "--archivo") == 0) {
-            if (i + 1 < argc) {
+    for (int i = 1; i < argc; i++)
+    {
+        if (strcmp(argv[i], "-a") == 0 || strcmp(argv[i], "--archivo") == 0)
+        {
+            if (i + 1 < argc)
+            {
                 archivo = argv[++i];
-            } else {
-                std::cerr << "Error: Se requiere un archivo después de " << argv[i] << std::endl;
+            }
+            else
+            {
+                cerr << "Error: Se requiere un archivo después de " << argv[i] << endl;
                 mostrarAyuda();
                 exit(EXIT_FAILURE);
             }
-        } else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--cantidad") == 0) {
-            if (i + 1 < argc) {
-                cantidad = std::stoi(argv[++i]);
-            } else {
-                std::cerr << "Error: Se requiere una cantidad después de " << argv[i] << std::endl;
+        }
+        else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--cantidad") == 0)
+        {
+            if (i + 1 < argc)
+            {
+                cantPreguntas = std::stoi(argv[++i]);
+            }
+            else
+            {
+                cerr << "Error: Se requiere una cantidad después de " << argv[i] << endl;
                 mostrarAyuda();
                 exit(EXIT_FAILURE);
             }
-        } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+        }
+        else if (strcmp(argv[i], "-u") == 0 || strcmp(argv[i], "--usuarios") == 0)
+        {
+            if (i + 1 < argc)
+            {
+                cantUsuarios = stoi(argv[++i]);
+            }
+            else
+            {
+                cerr << "Error: Se requiere un cantidad de usuarios después de " << argv[i] << endl;
+                mostrarAyuda();
+                exit(EXIT_FAILURE);
+            }
+        }
+        else if (strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--puerto") == 0)
+        {
+            if (i + 1 < argc)
+            {
+                puerto = stoi(argv[++i]);
+            }
+            else
+            {
+                cerr << "Error: Se requiere una puerto después de " << argv[i] << endl;
+                mostrarAyuda();
+                exit(EXIT_FAILURE);
+            }
+        }
+        else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
+        {
             mostrarAyuda();
             exit(EXIT_SUCCESS);
-        } else {
-            std::cerr << "Parámetro desconocido: " << argv[i] << std::endl;
+        }
+        else
+        {
+            cerr << "Parámetro desconocido: " << argv[i] << endl;
             mostrarAyuda();
             exit(EXIT_FAILURE);
         }
     }
 
-    if (cantidad <= 0) {
-        std::cerr << "Error: La cantidad de preguntas debe ser mayor a 0" << std::endl;
-        exit(EXIT_FAILURE);
-    }
+    validarParametros(cantUsuarios, puerto, cantPreguntas);
 
     signal(SIGINT, SIG_IGN);
     signal(SIGTERM, limpiarRecursos);
@@ -288,20 +374,77 @@ int main(int argc, char *argv[]) {
         close(lock_fd);
         exit(EXIT_FAILURE);
     }
-     
-    // Creamos y mapeamos memoria compartida
-    crearMemoriaCompartida();
-    mapearMemoriaCompartida();
-    
-    // Inicializamos los semaforos
-    inicializarSemaforos();
 
     // Cargamos las preguntas del archivo csv
     mc->preguntasCargadas = cargarPreguntas(archivo, cantidad);
 
-    std::cout << "Servidor iniciado. Esperando usuario..." << std::endl;
-    
-    while (true) {
+
+    int server_fd, new_socket;
+    struct sockaddr_in address;
+    int opt = 1;
+    int addrlen = sizeof(address);
+    std::map<int, ClientInfo> clients;
+    std::vector<std::string> questions;
+    int PORT = 8080;
+
+    // Leer archivo de preguntas
+    std::ifstream file("preguntas.txt");
+    std::string question;
+    while (std::getline(file, question))
+    {
+        questions.push_back(question);
+    }
+    file.close();
+
+    // Crear socket
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
+    {
+        perror("Socket fallido");
+        exit(EXIT_FAILURE);
+    }
+
+    // Forzar reutilización de puerto
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
+    {
+        perror("Setsockopt fallido");
+        exit(EXIT_FAILURE);
+    }
+
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(PORT);
+
+    // Asociar socket a puerto
+    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0)
+    {
+        perror("Bind fallido");
+        exit(EXIT_FAILURE);
+    }
+
+    // Escuchar conexiones
+    if (listen(server_fd, 3) < 0)
+    {
+        perror("Escuchar fallido");
+        exit(EXIT_FAILURE);
+    }
+
+    std::cout << "Servidor escuchando en el puerto " << PORT << std::endl;
+
+    while (true)
+    {
+        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0)
+        {
+            perror("Aceptación fallida");
+            exit(EXIT_FAILURE);
+        }
+
+        // Manejar cliente en un nuevo hilo
+        std::thread client_thread(handle_client, new_socket, std::ref(clients), std::ref(questions));
+        client_thread.detach();
+    }
+
+    while (true)
+    {
         mc->cliente_pid = 0;
         sem_post(sem_servidor);
         sem_wait(sem_cliente); // Esperamos al cliente
@@ -309,11 +452,13 @@ int main(int argc, char *argv[]) {
         std::cout << "Cliente conectado.\n";
 
         // Mostramos preguntas y procesamos respuestas
-        for (int i = 0; i < mc->preguntasCargadas; ++i) {
+        for (int i = 0; i < mc->preguntasCargadas; ++i)
+        {
             // Esperamos respuesta del cliente
             sem_wait(sem_cliente);
             // Leemos respuesta del cliente
-            if (mc->preguntas[i].respuestaCliente == mc->preguntas[i].respuestaCorrecta) {
+            if (mc->preguntas[i].respuestaCliente == mc->preguntas[i].respuestaCorrecta)
+            {
                 mc->puntos++;
             }
         }
@@ -323,6 +468,6 @@ int main(int argc, char *argv[]) {
 
     printf("Finalizando servidor...\n");
     limpiarRecursos(0);
-   
+
     return EXIT_SUCCESS;
 }
