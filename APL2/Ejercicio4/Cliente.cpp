@@ -1,18 +1,33 @@
 #include <iostream>
+#include <fstream>
+#include <cstring>
+#include <csignal>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <fcntl.h>
+#include <sys/mman.h>
 #include <cstring>
 #include <csignal>
 #include <semaphore.h>
 #include <unistd.h>
+#include <sys/file.h>
+#include <iostream>
+#include <fstream>
+#include <cstring>
+#include <csignal>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <semaphore.h>
+#include <sys/file.h>
 
 using namespace std;
 
-#define MAX_PREGUNTAS 10   // Máximo número de preguntas
+#define MAX_PREGUNTAS 100   // Máximo número de preguntas
 #define MAX_OPCIONES 3     // Máximo número de opciones por pregunta
 #define TAM_PREGUNTA 256   // Tamaño máximo de una pregunta
 
-const char* MEMORIA_COMPARTIDA = "/dev/shm/memoria_compartida";
+const char* MEMORIA_COMPARTIDA = "/memoria_compartida";
 const char* SEM_CLIENTE = "/sem_cliente";
 const char* SEM_SERVIDOR = "/sem_servidor";
 
@@ -21,19 +36,20 @@ typedef struct {
     char pregunta[TAM_PREGUNTA];
     char opciones[MAX_OPCIONES][TAM_PREGUNTA];
     int respuestaCorrecta;
+    int respuestaCliente;
 } Pregunta;
 
 // Estructura de memoria compartida
 typedef struct {
     Pregunta preguntas[MAX_PREGUNTAS];
-    int preguntaActual;
     int puntos;
+    int preguntasCargadas;
     pid_t cliente_pid;
 } MemoriaCompartida;
 
 // Variables globales
 MemoriaCompartida* mc;
-int mc_fd;
+int idMemoria;
 sem_t* sem_cliente;
 sem_t* sem_servidor;
 
@@ -86,18 +102,31 @@ int main(int argc, char *argv[]) {
     }
 
     // Conectar a la memoria compartida
-    key_t key = ftok(MEMORIA_COMPARTIDA, 65);
-    int shmId = shmget(key, sizeof(MemoriaCompartida), 0600);
-    if (shmId == -1) {
-        cerr << "Error: El servidor no está corriendo o no se pudo conectar a la memoria compartida." << endl;
-        return 1;
+    idMemoria = shm_open(MEMORIA_COMPARTIDA, O_CREAT | O_RDWR, 0600);
+    if (idMemoria == -1) {
+        perror("Error al leer memoria compartida");
+        exit(EXIT_FAILURE);
     }
+
+    mc = (MemoriaCompartida*) mmap(NULL, sizeof(MemoriaCompartida),
+        PROT_READ | PROT_WRITE, MAP_SHARED, idMemoria, 0);
+    if (mc == MAP_FAILED) {
+        perror("Error al mapear la memoria compartida");
+        exit(EXIT_FAILURE);
+    }
+
+    // key_t key = ftok(MEMORIA_COMPARTIDA, 65);
+    // int shmId = shmget(key, sizeof(MemoriaCompartida), 0600);
+    // if (shmId == -1) {
+    //     cerr << "Error: El servidor no está corriendo o no se pudo conectar a la memoria compartida." << endl;
+    //     return 1;
+    // }
     
-    mc = (MemoriaCompartida *) shmat(shmId, nullptr, 0);
-    if (mc == (MemoriaCompartida *)-1) {
-        cerr << "Error al conectar a la memoria compartida." << endl;
-        return 1;
-    }
+    // mc = (MemoriaCompartida *) shmat(shmId, nullptr, 0);
+    // if (mc == (MemoriaCompartida *)-1) {
+    //     cerr << "Error al conectar a la memoria compartida." << endl;
+    //     return 1;
+    // }
 
     // Conectar a los semáforos
     sem_cliente = sem_open(SEM_CLIENTE, 0);
@@ -114,27 +143,35 @@ int main(int argc, char *argv[]) {
 
     // Iniciar la comunicación
     cout << "Bienvenido, " << nickname << ". Esperando preguntas..." << endl;
-    operarSemaforo(sem_servidor, 1); // Avisar al servidor que el cliente está listo
+    // operarSemaforo(sem_servidor, 1); // Avisar al servidor que el cliente está listo
 
-    while (true) {
+    int contador = 0;
+    cout << "Preguntas cargadas: " << mc->preguntasCargadas << endl;
+    
+    // Aviso al servidor que me conecto
+    sem_post(sem_cliente);
+    
+    while (contador < mc->preguntasCargadas) {
         // Esperar a recibir una pregunta
-        operarSemaforo(sem_cliente, -1);
-
+        //operarSemaforo(sem_cliente, 1);
         // Mostrar la pregunta
-        cout << "Pregunta: " << mc->preguntas[mc->preguntaActual].pregunta << endl;
+        cout << "Pregunta: " << mc->preguntas[contador].pregunta << endl;
         for (int i = 0; i < MAX_OPCIONES; i++) {
-            cout << i + 1 << ". " << mc->preguntas[mc->preguntaActual].opciones[i] << endl;
+            cout << i + 1 << ". " << mc->preguntas[contador].opciones[i] << endl;
         }
 
         // Obtener la respuesta del usuario
         int respuesta;
         cout << "Tu respuesta: ";
         cin >> respuesta;
-        mc->preguntaActual = respuesta; // Enviar la respuesta al servidor
-
+        mc->preguntas[contador].respuestaCliente = respuesta; // Enviar la respuesta al servidor
+        contador ++;
         // Avisar al servidor
-        operarSemaforo(sem_servidor, 1);
+        sem_post(sem_cliente);
     }
+    sem_wait(sem_servidor);
+    std::cout << "Partida finalizada. Puntos: " << mc->puntos << std::endl;
+
 
     return 0;
 }

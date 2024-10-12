@@ -27,10 +27,14 @@
 #include <sys/mman.h>
 #include <semaphore.h>
 #include <sys/file.h>
+#include <vector>
 
-#define MAX_PREGUNTAS 10   // Máximo número de preguntas
+using namespace std;
+
+#define MAX_PREGUNTAS 100  // Máximo número de preguntas en la memoria compartida
 #define MAX_OPCIONES 3     // Máximo número de opciones por pregunta
 #define TAM_PREGUNTA 256   // Tamaño máximo de una pregunta
+
 
 const char* MEMORIA_COMPARTIDA = "/memoria_compartida";
 const char* SEM_CLIENTE = "/sem_cliente";
@@ -42,13 +46,14 @@ typedef struct {
     char pregunta[TAM_PREGUNTA];
     char opciones[MAX_OPCIONES][TAM_PREGUNTA];
     int respuestaCorrecta;
+    int respuestaCliente;
 } Pregunta;
 
 // Estructura de memoria compartida
 typedef struct {
-    Pregunta preguntas[MAX_PREGUNTAS];
-    int preguntaActual;
+    Pregunta preguntas[MAX_PREGUNTAS];  // Reemplazamos vector por array
     int puntos;
+    int preguntasCargadas;
     pid_t cliente_pid;
 } MemoriaCompartida;
 
@@ -87,9 +92,8 @@ void manejarSIGUSR1(int signal)
 }
 
 
-void limpiarRecursos()
+void limpiarRecursos(int signal)
 {
-
     // Liberamos memoria compartida
     if (mc) {
         munmap(mc, sizeof(MemoriaCompartida));
@@ -119,21 +123,22 @@ void crearMemoriaCompartida() {
     idMemoria = shm_open(MEMORIA_COMPARTIDA, O_CREAT | O_RDWR, 0600);
     if (idMemoria == -1) {
         perror("Error al crear memoria compartida");
-        limpiarRecursos();
+        limpiarRecursos(0);
         exit(EXIT_FAILURE);
     }
     if (ftruncate(idMemoria, sizeof(MemoriaCompartida)) == -1) {
         perror("Error al dimensionar la memoria compartida");
-        limpiarRecursos();
+        limpiarRecursos(0);
         exit(EXIT_FAILURE);
     }
 }
 
 void mapearMemoriaCompartida() {
-    mc = (MemoriaCompartida*) mmap(NULL, sizeof(MemoriaCompartida), PROT_READ | PROT_WRITE, MAP_SHARED, idMemoria, 0);
+    mc = (MemoriaCompartida*) mmap(NULL, sizeof(MemoriaCompartida),
+        PROT_READ | PROT_WRITE, MAP_SHARED, idMemoria, 0);
     if (mc == MAP_FAILED) {
         perror("Error al mapear la memoria compartida");
-        limpiarRecursos();
+        limpiarRecursos(0);
         exit(EXIT_FAILURE);
     }
 }
@@ -157,12 +162,13 @@ void inicializarSemaforos()
     }
 }
 
-void cargarPreguntas(const char* archivo) {
+int cargarPreguntas(const char* archivo, int cantidadRecibida) {
     std::ifstream file(archivo);
     std::string linea;
     int indice = 0;
 
-    while (std::getline(file, linea) && indice < MAX_PREGUNTAS) {
+
+    while (std::getline(file, linea) && indice < cantidadRecibida) {
         std::string pregunta, opcion1, opcion2, opcion3;
         int respuesta;
 
@@ -193,6 +199,7 @@ void cargarPreguntas(const char* archivo) {
         indice++;
     }
     file.close();
+    return indice;
 }
 
 int main(int argc, char *argv[])
@@ -205,6 +212,7 @@ int main(int argc, char *argv[])
 
     const char* archivo = nullptr;
     int cantidad = 0;
+    int cant_preguntas = 0;
 
     // Procesar argumentos
     for (int i = 1; i < argc; i++) {
@@ -234,12 +242,12 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (cantidad <= 0 || cantidad > MAX_PREGUNTAS) {
-        std::cerr << "Error: La cantidad de preguntas debe ser entre 1 y " << MAX_PREGUNTAS << std::endl;
+    if (cantidad <= 0) {
+        std::cerr << "Error: La cantidad de preguntas debe ser mayor a 0" << std::endl;
         exit(EXIT_FAILURE);
     }
 
-    signal(SIGINT, SIG_IGN);
+    signal(SIGINT, limpiarRecursos);
     signal(SIGUSR1, manejarSIGUSR1);
 
     // Crear archivo de bloqueo
@@ -264,37 +272,31 @@ int main(int argc, char *argv[])
     inicializarSemaforos();
 
     // Cargamos las preguntas del archivo csv
-    cargarPreguntas(archivo);
+    mc->preguntasCargadas = cargarPreguntas(archivo, cantidad);
+    cout << "Preguntas cargadas: " << mc->preguntasCargadas << endl;
 
     std::cout << "Servidor iniciado. Esperando usuario..." << std::endl;
-
+    
     while (true) {
         sem_wait(sem_cliente); // Esperamos al cliente
+        mc->puntos = 0;
         std::cout << "Cliente conectado.\n";
 
         // Mostramos preguntas y procesamos respuestas
-        for (int i = 0; i < MAX_PREGUNTAS; ++i) {
-            std::cout << "Pregunta: " << mc->preguntas[i].pregunta << "\n";
-            std::cout << "1. " << mc->preguntas[i].opciones[0] << "\n";
-            std::cout << "2. " << mc->preguntas[i].opciones[1] << "\n";
-            std::cout << "3. " << mc->preguntas[i].opciones[2] << "\n";
-
+        for (int i = 0; i < mc->preguntasCargadas; ++i) {
             // Esperamos respuesta del cliente
-            sem_post(sem_servidor);
             sem_wait(sem_cliente);
-
-            int respuesta = mc->preguntaActual; // Leemos respuesta del cliente
-            if (respuesta == mc->preguntas[i].respuestaCorrecta) {
+            // Leemos respuesta del cliente
+            if (mc->preguntas[i].respuestaCliente == mc->preguntas[i].respuestaCorrecta) {
                 mc->puntos++;
             }
         }
-
-        std::cout << "Partida finalizada. Puntos: " << mc->puntos << std::endl;
         sem_post(sem_servidor); // Permitimos al cliente finalizar
+        std::cout << "Fin de la partida. Esperando usuario...\n";
     }
 
     printf("Finalizando servidor...\n");
-    limpiarRecursos();
+    limpiarRecursos(0);
    
     return EXIT_SUCCESS;
 }
