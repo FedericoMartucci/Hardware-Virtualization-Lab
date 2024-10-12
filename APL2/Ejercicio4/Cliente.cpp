@@ -1,25 +1,31 @@
-#include <iostream>
-#include <fstream>
-#include <cstring>
+/*
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#               Virtualizacion de Hardware              #
+#                                                       #
+#   APL2                                                #
+#   Nro ejercicio: 4                                    #
+#   Nro entrega: 1                                      #
+#   Nombre del script: Cliente.cpp                      #
+#                                                       #
+#   Integrantes:                                        #
+#                                                       #
+#       Branchesi, Tomas Agustin      43013625          #
+#       Martucci, Federico Ariel      44690247          #
+#                                                       #
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+*/
+
 #include <csignal>
+#include <cstring>
+#include <fcntl.h>
+#include <fstream>
+#include <iostream>
+#include <semaphore.h>
+#include <sys/file.h>
 #include <sys/ipc.h>
+#include <sys/mman.h>
 #include <sys/shm.h>
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <cstring>
-#include <csignal>
-#include <semaphore.h>
 #include <unistd.h>
-#include <sys/file.h>
-#include <iostream>
-#include <fstream>
-#include <cstring>
-#include <csignal>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <semaphore.h>
-#include <sys/file.h>
 
 using namespace std;
 
@@ -30,6 +36,8 @@ using namespace std;
 const char* MEMORIA_COMPARTIDA = "/memoria_compartida";
 const char* SEM_CLIENTE = "/sem_cliente";
 const char* SEM_SERVIDOR = "/sem_servidor";
+const char* SEM_PUNTOS = "/sem_puntos";
+const char* LOCK_FILE = "/tmp/cliente_memoria.lock";
 
 // Estructura para cada pregunta
 typedef struct {
@@ -50,29 +58,27 @@ typedef struct {
 // Variables globales
 MemoriaCompartida* mc;
 int idMemoria;
+int lock_fd;
 sem_t* sem_cliente;
 sem_t* sem_servidor;
-
-// Inicializar semáforo
-void operarSemaforo(sem_t* sem, int operacion) {
-    if (operacion > 0) {
-        sem_post(sem);
-    } else {
-        sem_wait(sem);
-    }
-}
+sem_t* sem_puntos;
 
 void mostrarAyuda() {
     cout << "Uso: ./cliente --nickname <nombre_jugador>\n";
     cout << "Opciones:\n";
-    cout << "  --nickname      Nickname del usuario (Requerido).\n";
+    cout << "  -n, --nickname  Nickname del usuario (Requerido).\n";
     cout << "  -h, --help      Muestra esta ayuda.\n";
 }
 
-int main(int argc, char *argv[]) {
-    // Ignorar SIGINT
-    signal(SIGINT, SIG_IGN);
+void manejarSIGUSR1(int signal)
+{
+    cout << "Recibida señal SIGUSR1. Finalizando cliente..." << endl;
+    close(lock_fd);
+    unlink(LOCK_FILE);
+    exit(0);
+}
 
+int main(int argc, char *argv[]) {
     // Validar parámetros
     if (argc < 3) {
         mostrarAyuda();
@@ -80,10 +86,11 @@ int main(int argc, char *argv[]) {
     }
 
     string nickname;
+    int contador = 0;
     
     // Procesar argumentos
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--nickname") == 0) {
+        if (strcmp(argv[i], "-n") == 0 || strcmp(argv[i], "--nickname") == 0) {
             if (i + 1 < argc) {
                 nickname = argv[++i];
             } else {
@@ -101,6 +108,24 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // Ignorar SIGINT
+    signal(SIGINT, SIG_IGN);
+    signal(SIGUSR1, manejarSIGUSR1);
+
+    // Crear archivo de bloqueo para evitar tener dos clientes en simultaneo.
+    lock_fd = open(LOCK_FILE, O_CREAT | O_RDWR, 0666);
+    if (lock_fd == -1)
+    {
+        perror("Error al crear archivo de bloqueo");
+        exit(EXIT_FAILURE);
+    }
+    if (flock(lock_fd, LOCK_EX | LOCK_NB) == -1)
+    {
+        perror("Error: otro cliente ya está en ejecución");
+        close(lock_fd);
+        exit(EXIT_FAILURE);
+    }
+
     // Conectar a la memoria compartida
     idMemoria = shm_open(MEMORIA_COMPARTIDA, O_CREAT | O_RDWR, 0600);
     if (idMemoria == -1) {
@@ -115,19 +140,6 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    // key_t key = ftok(MEMORIA_COMPARTIDA, 65);
-    // int shmId = shmget(key, sizeof(MemoriaCompartida), 0600);
-    // if (shmId == -1) {
-    //     cerr << "Error: El servidor no está corriendo o no se pudo conectar a la memoria compartida." << endl;
-    //     return 1;
-    // }
-    
-    // mc = (MemoriaCompartida *) shmat(shmId, nullptr, 0);
-    // if (mc == (MemoriaCompartida *)-1) {
-    //     cerr << "Error al conectar a la memoria compartida." << endl;
-    //     return 1;
-    // }
-
     // Conectar a los semáforos
     sem_cliente = sem_open(SEM_CLIENTE, 0);
     if (sem_cliente == SEM_FAILED) {
@@ -141,19 +153,23 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Iniciar la comunicación
-    cout << "Bienvenido, " << nickname << ". Esperando preguntas..." << endl;
-    // operarSemaforo(sem_servidor, 1); // Avisar al servidor que el cliente está listo
+    sem_puntos = sem_open(SEM_PUNTOS, 0);
+    if (sem_puntos == SEM_FAILED) {
+        cerr << "Error al conectar al semáforo del servidor." << endl;
+        return 1;
+    }
 
-    int contador = 0;
-    cout << "Preguntas cargadas: " << mc->preguntasCargadas << endl;
+    // Iniciar la comunicación
+    cout << "Bienvenido, " << nickname << ". Esperando preguntas..." << endl;  
     
-    // Aviso al servidor que me conecto
+    // Avisar al servidor que el cliente está listo
+    sem_wait(sem_servidor);
     sem_post(sem_cliente);
+
+    // Asigno el pid del cliente para indicar que comenzo el juego
+    mc->cliente_pid = getpid();
     
     while (contador < mc->preguntasCargadas) {
-        // Esperar a recibir una pregunta
-        //operarSemaforo(sem_cliente, 1);
         // Mostrar la pregunta
         cout << "Pregunta: " << mc->preguntas[contador].pregunta << endl;
         for (int i = 0; i < MAX_OPCIONES; i++) {
@@ -169,7 +185,7 @@ int main(int argc, char *argv[]) {
         // Avisar al servidor
         sem_post(sem_cliente);
     }
-    sem_wait(sem_servidor);
+    sem_wait(sem_puntos);
     std::cout << "Partida finalizada. Puntos: " << mc->puntos << std::endl;
 
 

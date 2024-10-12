@@ -1,33 +1,29 @@
 /*
-#########################################################
-#               Virtualizacion de hardware              #
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#               Virtualizacion de Hardware              #
 #                                                       #
-#   APL2 - Ejercicio 4                                  #
+#   APL2                                                #
+#   Nro ejercicio: 4                                    #
+#   Nro entrega: 1                                      #
 #   Nombre del script: Servidor.cpp                     #
 #                                                       #
 #   Integrantes:                                        #
 #                                                       #
-#       Ocampo, Nicole Fabiana              44451238    #
-#       Sandoval Vasquez, Juan Leandro      41548235    #
-#       Tigani, Martin Sebastian            32788835    #
-#       Villegas, Lucas Ezequiel            37792844    #
-#       Vivas, Pablo Ezequiel               38703964    #
+#       Branchesi, Tomas Agustin      43013625          #
+#       Martucci, Federico Ariel      44690247          #
 #                                                       #
-#   Instancia de entrega: Reentrega                     #
-#                                                       #
-#########################################################
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 */
 
-#include <iostream>
-#include <fstream>
-#include <cstring>
 #include <csignal>
-#include <unistd.h>
+#include <cstring>
 #include <fcntl.h>
-#include <sys/mman.h>
+#include <fstream>
+#include <iostream>
 #include <semaphore.h>
 #include <sys/file.h>
-#include <vector>
+#include <sys/mman.h>
+#include <unistd.h>
 
 using namespace std;
 
@@ -35,10 +31,10 @@ using namespace std;
 #define MAX_OPCIONES 3     // Máximo número de opciones por pregunta
 #define TAM_PREGUNTA 256   // Tamaño máximo de una pregunta
 
-
 const char* MEMORIA_COMPARTIDA = "/memoria_compartida";
 const char* SEM_CLIENTE = "/sem_cliente";
 const char* SEM_SERVIDOR = "/sem_servidor";
+const char* SEM_PUNTOS = "/sem_puntos";
 const char* LOCK_FILE = "/tmp/servidor_memoria.lock";
 
 // Estructura para cada pregunta
@@ -63,6 +59,7 @@ int idMemoria;
 int lock_fd;
 sem_t* sem_cliente;
 sem_t* sem_servidor;
+sem_t* sem_puntos;
 
 void mostrarAyuda() {
     std::cout << "Uso: ./servidor -a <archivo> -c <cantidad>\n";
@@ -76,24 +73,30 @@ void manejarSIGUSR1(int signal)
 {
     if (mc->cliente_pid == 0)
     {
-        std::cout << "Recibida señal SIGUSR1. Finalizando servidor..." << std::endl;
+        cout << "Recibida señal SIGUSR1. Finalizando servidor..." << endl;
         munmap(mc, sizeof(MemoriaCompartida));
         shm_unlink(MEMORIA_COMPARTIDA);
+        sem_close(sem_cliente);
         sem_unlink(SEM_CLIENTE);
+        sem_close(sem_servidor);
         sem_unlink(SEM_SERVIDOR);
+        sem_close(sem_puntos);
+        sem_unlink(SEM_PUNTOS);
         close(lock_fd);
         unlink(LOCK_FILE);
         exit(0);
     }
     else
     {
-        std::cerr << "Recibida señal SIGUSR1, pero hay una partida en progreso. Ignorando..." << std::endl;
+        cerr << "Recibida señal SIGUSR1, pero hay una partida en progreso. Ignorando..." << std::endl;
     }
 }
 
 
 void limpiarRecursos(int signal)
 {
+    // Liberamos recursos del cliente en caso de haber partida.
+    kill(mc->cliente_pid, SIGUSR1);
     // Liberamos memoria compartida
     if (mc) {
         munmap(mc, sizeof(MemoriaCompartida));
@@ -110,6 +113,12 @@ void limpiarRecursos(int signal)
     if (sem_servidor) {
         sem_close(sem_servidor);
         sem_unlink(SEM_SERVIDOR);
+    }
+
+    // Liberamos semáforo de los puntos
+    if (sem_puntos) {
+        sem_close(sem_puntos);
+        sem_unlink(SEM_PUNTOS);
     }
 
     // Liberamos archivo de bloqueo
@@ -148,16 +157,27 @@ void inicializarSemaforos()
     sem_cliente = sem_open(SEM_CLIENTE, O_CREAT, 0666, 0);
     if (sem_cliente == SEM_FAILED)
     {
-        perror("Error al crear semáforo cliente");
+        perror("Error al crear semáforo de cliente");
         exit(EXIT_FAILURE);
     }
 
     sem_servidor = sem_open(SEM_SERVIDOR, O_CREAT, 0666, 0);
     if (sem_servidor == SEM_FAILED)
     {
-        perror("Error al crear semáforo servidor");
+        perror("Error al crear semáforo de servidor");
         sem_close(sem_cliente);
         sem_unlink(SEM_CLIENTE);
+        exit(EXIT_FAILURE);
+    }
+
+    sem_puntos = sem_open(SEM_PUNTOS, O_CREAT, 0600, 0);
+    if (sem_puntos == SEM_FAILED)
+    {
+        perror("Error al crear semáforo de puntos");
+        sem_close(sem_cliente);
+        sem_unlink(SEM_CLIENTE);
+        sem_close(sem_servidor);
+        sem_unlink(SEM_SERVIDOR);
         exit(EXIT_FAILURE);
     }
 }
@@ -202,8 +222,8 @@ int cargarPreguntas(const char* archivo, int cantidadRecibida) {
     return indice;
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
+    // Validar parámetros
     if (argc < 5)
     {
         mostrarAyuda();
@@ -212,7 +232,6 @@ int main(int argc, char *argv[])
 
     const char* archivo = nullptr;
     int cantidad = 0;
-    int cant_preguntas = 0;
 
     // Procesar argumentos
     for (int i = 1; i < argc; i++) {
@@ -247,10 +266,12 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    signal(SIGINT, limpiarRecursos);
+    signal(SIGINT, SIG_IGN);
+    signal(SIGTERM, limpiarRecursos);
+    signal(SIGHUP, limpiarRecursos);
     signal(SIGUSR1, manejarSIGUSR1);
 
-    // Crear archivo de bloqueo
+    // Crear archivo de bloqueo para evitar tener dos servidores en simultaneo.
     lock_fd = open(LOCK_FILE, O_CREAT | O_RDWR, 0666);
     if (lock_fd == -1)
     {
@@ -273,11 +294,12 @@ int main(int argc, char *argv[])
 
     // Cargamos las preguntas del archivo csv
     mc->preguntasCargadas = cargarPreguntas(archivo, cantidad);
-    cout << "Preguntas cargadas: " << mc->preguntasCargadas << endl;
 
     std::cout << "Servidor iniciado. Esperando usuario..." << std::endl;
     
     while (true) {
+        mc->cliente_pid = 0;
+        sem_post(sem_servidor);
         sem_wait(sem_cliente); // Esperamos al cliente
         mc->puntos = 0;
         std::cout << "Cliente conectado.\n";
@@ -291,7 +313,7 @@ int main(int argc, char *argv[])
                 mc->puntos++;
             }
         }
-        sem_post(sem_servidor); // Permitimos al cliente finalizar
+        sem_post(sem_puntos); // Permitimos al cliente finalizar
         std::cout << "Fin de la partida. Esperando usuario...\n";
     }
 
