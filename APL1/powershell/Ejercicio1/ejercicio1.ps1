@@ -133,7 +133,7 @@ function procesarArchivos {
             $aciertos = contarAciertos $numeros $numerosGanadores
 
             if ($aciertos -ge 3) {
-                $jsonData["$aciertos`_aciertos"] += @{
+                $jsonData["$aciertos`_aciertos"] += [ordered]@{
                     agencia = $agencia
                     jugada = $jugada
                 }
