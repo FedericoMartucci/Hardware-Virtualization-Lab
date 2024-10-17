@@ -15,274 +15,237 @@
 #                                                       #
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Variables ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-# Variables en donde se van a almacenar los parametros de entrada
-declare directorioEntrada="";
-declare rutaArchivoSalida="";
-declare numerosGanadores="";
-declare mostrarPorPantalla=false;
-
-# Vector asociativo en donde se van a guardar la cantidad aciertos de cada jugada por agencia
-declare -A vectorAciertos;
-
-# Variable en formato JSON para guardar en el archivo de salida o mostrarlo por pantalla
-declare jsonData=$(jq -n '{ "5_aciertos": [], "4_aciertos": [], "3_aciertos": [] }');
-
-# Variables para retorno de errores (exit)
-declare ERROR_PARAMETROS_INVALIDOS=1;
-declare ERROR_ARGUMENTO_DESCONOCIDO=2;
-declare ERROR_DIRECTORIO=3;
-declare ERROR_ARCHIVO_SALIDA_Y_PANTALLA=4;
-declare ERROR_DIRECTORIO_SIN_ARCHIVOS=5;
-declare ERROR_EXTENSION=6;
-declare ERROR_RUTA_INVALIDA=7;
-declare ERROR_NUMERO_DE_CAMPOS_INCORRECTOS=8;
-declare ERROR_NUMERO_JUGADO_INVALIDO=9;
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Funciones ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+declare directorioEntrada=""
+declare rutaArchivoSalida=""
+declare numerosGanadores=()
+declare mostrarPorPantalla=false
 
 function ayuda() {
-    echo "USO: $0 [-d|--directorio <directorio_entrada_archivos_csv>] [-a|--archivo <ruta_archivo_json_salida>] [-p|--pantalla]";
-    echo "DESCRIPCIÓN: Este script procesa archivos CSV de notas de finales y genera un archivo JSON con el resumen de las notas de los alumnos.";
-    echo "OPCIONES:";
-    echo "  -d, --directorio   Ruta del directorio que contiene los archivos CSV a procesar.";
-    echo "  -a, --archivo      Ruta del archivo JSON de salida (incluyendo el nombre del archivo).";
-    echo "  -p, --pantalla     Muestra la salida por pantalla en lugar de generar un archivo JSON.";
-    echo "  -h, --help         Muestra este mensaje de ayuda.";
+    echo "USO: $0 [-d|--directorio <directorio_entrada_archivos_csv>] [-a|--archivo <ruta_archivo_json_salida>] [-p|--pantalla]"
+    echo "DESCRIPCIÓN: Este script procesa archivos CSV de notas de finales y genera un archivo JSON con el resumen de las notas de los alumnos."
+    echo "OPCIONES:"
+    echo "  -d, --directorio   Ruta del directorio que contiene los archivos CSV a procesar."
+    echo "  -a, --archivo      Ruta del archivo JSON de salida (incluyendo el nombre del archivo)."
+    echo "  -p, --pantalla     Muestra la salida por pantalla en lugar de generar un archivo JSON."
+    echo "  -h, --help         Muestra este mensaje de ayuda."
     echo "ACLARACIONES:"
-    echo "  - Se requiere la instalación del comando jq (sudo apt install jq).";
     echo "  - Los parámetros -a o --archivo y -p o --pantalla no se pueden usar juntas."
 }
 
-# eliminarExtensionArchivo: Los utilizo para los archivos a procesar ya que sus nombre 
-# tienen el nombre de la agencia.
-
-function eliminarExtensionArchivo() {
-    echo "$(basename "${1%.*}")";
-}
-
-# imprimirArchivoJson: determina segun los parametros de entrada, si se muestra
-# por pantalla o si se almacena en un archivo JSON
-
-function imprimirArchivoJson() {
-    if [ "$mostrarPorPantalla" = true ]; then
-        echo "$jsonData";
-    else
-        echo "$jsonData" > "$rutaArchivoSalida";
-        echo "El archivo JSON fue generado exitosamente en la ruta indicada $rutaArchivoSalida";
-    fi
-}
-
-# generarJson: toma cada clave del array vectorAciertos,
-# extrae los valores de agencia, jugada y el número de aciertos.
-# Actualiza el objeto JSON jsonData agregando los datos a la sección
-# correspondiente basada en el número de aciertos.
-
-function generarJson() {
-    for clave in "${!vectorAciertos[@]}"; do
-        agencia=$(echo "$clave" | cut -d '-' -f1);
-        jugada=$(echo "$clave" | cut -d '-' -f2);
-        aciertos=${vectorAciertos["$clave"]};
-
-        # Al procesar el archivo se filtra por aquellas jugadas que tuvieron entre 3 y 5 aciertos,
-        # con lo cual no es necesario hacer un case para cada caso en particular,
-        # de esta forma trabajamos con un JSON de forma dinamica.
-        jsonData=$(
-            echo "$jsonData" |              \
-            jq --arg aciertos "$aciertos"   \
-            --arg agencia "$agencia"        \
-            --arg jugada "$jugada"          \
-            '.["\($aciertos)_aciertos"] += [{ agencia: $agencia, jugada: $jugada }]'
-        );
-    done
-}
-
-# obtenerNumerosGanadores: lee el archivo de los numeros ganadores,
-# cuenta las frecuencias de cada número en el archivo y guarda la lista
-# de números únicos encontrados en la variable numerosGanadores.
-function obtenerNumerosGanadores() {
-    # Obtener la ruta del directorio del script
-    script_dir=$(dirname "$0")
-
-    numerosGanadores=$(awk -F"," '
-        {
-            for (i = 1; i <= NF; i++)
-                numerosGanadores[$i]++
-        }
-        END {
-            for (num in numerosGanadores)
-                printf "%s ", num
-        }
-        ' "$script_dir/ganadores.csv"
-    )
-}
-
-# procesarArchivos: procesa archivos CSV en un directorio,
-# valida y cuenta aciertos según reglas especificadas,
-# y guarda los resultados en un archivo temporal.
-
-function procesarArchivos() {
-    # Creo archivo temporal para guardar los resultados post-procesamiento
-    archivo_temporal=$(mktemp)
-
-    for archivoCSV in "$directorioEntrada"/*.csv; do
-        agencia=$(eliminarExtensionArchivo "$archivoCSV")
-        awk -F"," \
-        -v agencia="$agencia" \
-        -v numerosGanadores="$numerosGanadores" \
-        -v error_num_campos="$ERROR_NUMERO_DE_CAMPOS_INCORRECTOS" \
-        -v error_num_jugado="$ERROR_NUMERO_JUGADO_INVALIDO" 'BEGIN {
-            # Dividir la variable numerosGanadores en un array asociativo usando espacios como separador
-            split(numerosGanadores, ganadoresArray, " ")
-            
-            # Guardar los números ganadores en el array asociativo "ganadores"
-            for (i in ganadoresArray) {
-                ganadores[ganadoresArray[i]] = 1
-            }
-        }
-        {
-            # Validar que los registros no tengan NF != 6
-            if (NF != 6) {
-                print "Error: El archivo", FILENAME, "tiene un número incorrecto de campos en la línea", NR
-                exit error_num_campos
-            }
-
-            # Validar que los números jugados estén entre 0 y 99 + logica de aciertos
-            aciertos = 0
-            for (i = 2; i <= NF; i++) {
-                # Elimino el \r generado por un salto de linea en Windows (\r\n) ya que Linux no lo detecta y causa comportamientos inesperados.
-                gsub(/\r/, "", $i)
-
-                if ($i < 0 || $i > 99) {
-                    print "Error: El archivo", FILENAME, "tiene números fuera del rango permitido en la línea", NR
-                    exit error_num_jugado
-                }
-
-                if (ganadores[$i]) {
-                    aciertos++
-                }
-            }
-
-            # Generar el registro si hay 3, 4 o 5 aciertos
-            if (aciertos >= 3) {
-                print agencia "-" NR, aciertos;
-            }
-        }
-       ' "$archivoCSV" >> "$archivo_temporal"
-    done
-}
-
-# llenarArrayDesdeArchivoTemporal: carga los datos del archivo temporal
-# en el array vectorAciertos y luego elimina el archivo temporal.
-
-function llenarArrayDesdeArchivoTemporal() {
-    while read -r clave aciertos; do
-        vectorAciertos["$clave"]=$aciertos
-    done < "$archivo_temporal"
-
-    # Limpiar archivo temporal
-    rm "$archivo_temporal"
-}
-
-function main() {
-    if ! ls "$directorioEntrada"/*.csv &>/dev/null; then
-        echo "ERROR: No se encontraron archivos CSV en el directorio especificado.";
-        exit $ERROR_DIRECTORIO_SIN_ARCHIVOS;
-    fi
-
-    obtenerNumerosGanadores;
-    procesarArchivos;
-    llenarArrayDesdeArchivoTemporal;
-    generarJson;
-    imprimirArchivoJson;
-}
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Manejo de las opciones ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-opciones=$(getopt -o d:a:ph --l directorio:,archivo:,pantalla,help -- "$@" 2> /dev/null);
+opciones=$(getopt -o d:a:ph --long directorio:,archivo:,pantalla,help -- "$@" 2> /dev/null)
 
 if [ "$?" != "0" ]; then
-    echo "Opcion/es incorrectas";
-    exit $ERROR_PARAMETROS_INVALIDOS;
+    echo "Opción/es incorrectas"
+    exit 1
 fi
 
-eval set -- "$opciones";
+eval set -- "$opciones"
 
 while true; do
     case "$1" in
         -d | --directorio)
-            directorioEntrada="$2";
-            shift 2;
+            directorioEntrada="$2"
+            shift 2
             ;;
         -a | --archivo)
-            rutaArchivoSalida="$2";
-            shift 2;
+            rutaArchivoSalida="$2"
+            shift 2
             ;;
         -p | --pantalla)
-            mostrarPorPantalla=true;
-            shift;
-            ;;
-        --)
-            shift;
-            break;
+            mostrarPorPantalla=true
+            shift
             ;;
         -h | --help)
-            ayuda;
-            exit 0;
+            ayuda
+            exit 0
+            ;;
+        --)
+            shift
+            break
             ;;
         *)
-            echo "ERROR: Argumento desconocido: $1";
-            exit $ERROR_ARGUMENTO_DESCONOCIDO;
+            echo "ERROR: Argumento desconocido: $1"
+            exit 1
             ;;
     esac
 done
 
 # Verificar que se haya proporcionado el directorio de entrada correctamente
 if ! [ -d "$directorioEntrada" ]; then
-    echo "ERROR: Se debe especificar un directorio válido que contenga los archivos CSV.";
-    exit $ERROR_DIRECTORIO;
+    echo "ERROR: Se debe especificar un directorio válido que contenga los archivos CSV."
+    exit 1
 fi
 
 # Verificar que solo se haya proporcionado una opción de archivo
 if [ "$mostrarPorPantalla" = true ] && [ -n "$rutaArchivoSalida" ]; then
-    echo "ERROR: No se puede especificar la opción de pantalla (-p | --pantalla) junto con la opción de archivo (-a | --archivo).";
-    exit $ERROR_ARCHIVO_SALIDA_Y_PANTALLA;
+    echo "ERROR: No se puede especificar la opción de pantalla (-p | --pantalla) junto con la opción de archivo (-a | --archivo)."
+    exit 1
 fi
 
 # Verificar que se haya proporcionado la ruta de archivo correctamente
 if [ "$mostrarPorPantalla" = false ]; then
-    
-    # Verifico que la ruta del archivo de salida no sea un directorio
     if [ -d "$rutaArchivoSalida" ]; then
-        echo "ERROR: La ruta del archivo de salida es un directorio.";
-        exit $ERROR_DIRECTORIO;
+        echo "ERROR: La ruta del archivo de salida es un directorio."
+        exit 1
     fi
 
-    # Verifico que la ruta de salida exista creando un archivo temporal
-    touch "$rutaArchivoSalida" 2>/dev/null;
-    
+    touch "$rutaArchivoSalida" 2>/dev/null
     if [ $? -ne 0 ]; then
-        echo "ERROR: Se debe especificar una ruta válida para guardar el archivo JSON.";         
-        ayuda;        
-        exit $ERROR_RUTA_INVALIDA;     
+        echo "ERROR: Se debe especificar una ruta válida para guardar el archivo JSON."
+        ayuda
+        exit 1
     fi
-    
-    # Eliminar el archivo temporal si se creó
-    rm -f "$rutaArchivoSalida";
 
-    # Verifico que el archivo indicado en la ruta de salida tenga como extension JSON
-    extension="${rutaArchivoSalida##*.}";
+    rm -f "$rutaArchivoSalida"
 
-    extension="${extension,,}";
+    extension="${rutaArchivoSalida##*.}"
+    extension="${extension,,}"
 
     if [ "$extension" != "json" ]; then
-        echo "ERROR: En la ruta del archivo de salida se debe especificar que este tendra una extensión JSON.";
-        exit $ERROR_EXTENSION;
+        echo "ERROR: En la ruta del archivo de salida se debe especificar que este tendrá una extensión JSON."
+        exit 1
     fi
-
 fi
 
-# ================================= Ejecución =================================
+# Función para eliminar la extensión de los archivos
+function eliminarExtensionArchivo() {
+    echo "${1##*/}" | sed 's/\.[^.]*$//'
+}
 
-main;
+function obtenerNumerosGanadores() {
+    local archivo="ganadores.csv"
+
+    # Verifica que el archivo 'ganadores.csv' exista
+    if [[ ! -f "$archivo" ]]; then
+        return 1
+    fi
+
+    # Lee el contenido del archivo y guarda los números en una lista sin imprimirlos
+    IFS=',' read -r -a numerosGanadores < "$archivo"
+
+    # Retorna la lista
+    echo "${numerosGanadores[@]}"
+}
+
+function contarAciertos() {
+    local numerosGanadores=("$@") # Captura todos los argumentos como un array
+    local aciertos=0
+
+    # Convertimos los números ganadores en un string para la búsqueda
+    local ganadoresStr="${numerosGanadores[*]}"
+
+    # Iteramos sobre cada número jugado
+    for numero in "${numerosJugados[@]}"; do
+        if [[ " $ganadoresStr " == *" $numero "* ]]; then
+            aciertos=$((aciertos + 1))
+        fi
+    done
+
+    echo $aciertos
+}
+
+jsonData_5_aciertos=()
+jsonData_4_aciertos=()
+jsonData_3_aciertos=()
+
+function procesarArchivos() {
+    # Obtener los números ganadores y validar si se pudo leer correctamente
+    numerosGanadores=($(obtenerNumerosGanadores))
+    if [ $? -ne 0 ]; then
+        echo "ERROR: El archivo ganadores.csv no existe en el directorio actual."
+        exit 1  # Salir si no se puede obtener los números ganadores
+    fi
+
+    # Asegúrate de que haya archivos CSV en el directorio
+    shopt -s nullglob
+    local archivosCSV=("$directorioEntrada"/*.csv)
+
+    for archivoCSV in "${archivosCSV[@]}"; do
+        local agencia=$(eliminarExtensionArchivo "$archivoCSV")
+
+        # Leer cada línea del archivo
+        while IFS= read -r linea || [[ -n $linea ]]; do
+            # Dividir la línea en jugada y números
+            IFS=',' read -r jugada numeros <<< "$linea"
+
+            # Asegurar que se procese cada línea adecuadamente
+            if [[ -z "$jugada" || -z "$numeros" ]]; then
+                continue
+            fi
+
+            IFS=',' read -ra numerosArray <<< "$numeros"
+
+            # Cambia el nombre de la variable a 'numerosJugados' para evitar confusiones
+            numerosJugados=("${numerosArray[@]}")
+            local aciertos=$(contarAciertos "${numerosGanadores[@]}")
+
+            if (( aciertos >= 3 )); then
+                # Añadir la información al array correspondiente
+                if (( aciertos == 5 )); then
+                    jsonData_5_aciertos+=("    {\n      \"agencia\": \"$agencia\",\n      \"jugada\": \"$jugada\"\n    }")
+                elif (( aciertos == 4 )); then
+                    jsonData_4_aciertos+=("    {\n      \"agencia\": \"$agencia\",\n      \"jugada\": \"$jugada\"\n    }")
+                elif (( aciertos == 3 )); then
+                    jsonData_3_aciertos+=("    {\n      \"agencia\": \"$agencia\",\n      \"jugada\": \"$jugada\"\n    }")
+                fi
+            fi
+        done < "$archivoCSV"
+    done
+}
+
+function generarJson() {
+    local json_output="{\n"
+
+    json_output+="  \"5_aciertos\": [\n"
+    for (( i=0; i<${#jsonData_5_aciertos[@]}; i++ )); do
+        json_output+="${jsonData_5_aciertos[i]}"
+        # Añadir coma si no es el último elemento
+        if (( i < ${#jsonData_5_aciertos[@]} - 1 )); then
+            json_output+=",\n"
+        else
+            json_output+="\n"
+        fi
+    done
+    json_output+="  ],\n"
+
+    json_output+="  \"4_aciertos\": [\n"
+    for (( i=0; i<${#jsonData_4_aciertos[@]}; i++ )); do
+        json_output+="${jsonData_4_aciertos[i]}"
+        # Añadir coma si no es el último elemento
+        if (( i < ${#jsonData_4_aciertos[@]} - 1 )); then
+            json_output+=",\n"
+        else
+            json_output+="\n"
+        fi
+    done
+    json_output+="  ],\n"
+
+    json_output+="  \"3_aciertos\": [\n"
+    for (( i=0; i<${#jsonData_3_aciertos[@]}; i++ )); do
+        json_output+="${jsonData_3_aciertos[i]}"
+        # Añadir coma si no es el último elemento
+        if (( i < ${#jsonData_3_aciertos[@]} - 1 )); then
+            json_output+=",\n"
+        else
+            json_output+="\n"
+        fi
+    done
+    json_output+="  ]\n"
+    json_output+="}"
+
+    # Si el usuario eligió mostrar por pantalla
+    if [ "$mostrarPorPantalla" = true ]; then
+        echo -e "$json_output"
+    else
+        echo -e "$json_output" > "$rutaArchivoSalida"
+        echo "El archivo fue generado exitosamente en la ruta $rutaArchivoSalida"
+    fi
+
+    
+}
+
+# Ejecutar la función principal para procesar los archivos
+procesarArchivos
+
+# Generar el JSON con los resultados
+generarJson
