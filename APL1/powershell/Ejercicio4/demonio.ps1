@@ -169,7 +169,8 @@ function Global:Monitorear {
 function CrearMonitor {
     param (
         [string]$Directorio,
-        [string]$Salida
+        [string]$Salida,
+        [string]$HashEventos
     )
 
     # Crear el FileSystemWatcher
@@ -189,14 +190,14 @@ function CrearMonitor {
     }
 
     $global:handlers = . {
-        Register-ObjectEvent $watcher -EventName Changed -Action $action -SourceIdentifier "ChangedEvent" 
-        Register-ObjectEvent $watcher -EventName Created -Action $action -SourceIdentifier "CreatedEvent"
-        Register-ObjectEvent $watcher -EventName Renamed -Action $action -SourceIdentifier "RenamedEvent"
+        Register-ObjectEvent $watcher -EventName Changed -Action $action -SourceIdentifier "ChangedEvent-$HashEventos" 
+        Register-ObjectEvent $watcher -EventName Created -Action $action -SourceIdentifier "CreatedEvent-$HashEventos"
+        Register-ObjectEvent $watcher -EventName Renamed -Action $action -SourceIdentifier "RenamedEvent-$HashEventos"
     }
     
     # Crear el Job en segundo plano
     $job = Start-Job -ScriptBlock {
-        param ($Directorio, $Salida)
+       param ($Directorio, $Salida)
         while ($true) {
             Start-Sleep -Seconds 1  # Evitar el consumo excesivo de CPU
         }
@@ -215,10 +216,10 @@ function IniciarDemonio {
         [string]$Salida
     )
 
-    # Definir la ruta del archivo PID
-    $pidFile = "$PSScriptRoot\pid-monitor.pid"
-    #$pidFile = "/tmp/pid-monitor-$($Directorio -replace '[^a-zA-Z0-9]', '_').pid"
-
+    # Generar el hash MD5 del directorio y crear el nombre del archivo PID
+    $rutaDirectorioAbs = Resolve-Path -Path $Directorio
+    $hash = (Get-FileHash -Algorithm MD5 -InputStream ([System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes($rutaDirectorioAbs)))).Hash
+    $pidFile = "/tmp/monitor_$hash.pid"
 
     # Verificar si el archivo PID ya existe
     if (Test-Path $pidFile) {
@@ -236,7 +237,7 @@ function IniciarDemonio {
     }
 
     # Ejecutar el script en segundo plano
-    CrearMonitor -Directorio $Directorio -Salida $Salida
+    CrearMonitor -Directorio $Directorio -Salida $Salida -HashEventos $hash
 }
 
 function FinalizarDemonio {
@@ -244,8 +245,10 @@ function FinalizarDemonio {
         [string]$Directorio
     )
 
-    # Definir la ruta del archivo PID
-    $pidFile = "$PSScriptRoot\pid-monitor.pid"
+    # Generar el hash MD5 del directorio y crear el nombre del archivo PID
+    $rutaDirectorioAbs = Resolve-Path -Path $Directorio
+    $hash = (Get-FileHash -Algorithm MD5 -InputStream ([System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes($rutaDirectorioAbs)))).Hash
+    $pidFile = "/tmp/monitor_$hash.pid"
 
     # Verificar si el archivo PID existe
     if (Test-Path $pidFile) {
