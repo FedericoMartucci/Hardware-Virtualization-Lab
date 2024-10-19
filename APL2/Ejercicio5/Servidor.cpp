@@ -318,13 +318,15 @@ int configurarSocket(int cantUsuarios, int puerto) {
     if (bind(socketEscucha, (struct sockaddr *)&serverConfig, sizeof(serverConfig)) < 0)
     {
         perror("Bind fallido.");
+        close(socketEscucha);
         exit(EXIT_FAILURE);
     }
 
-    // Escuchar conexiones
+    // Escuchar conexiones entrantes
     if (listen(socketEscucha, cantUsuarios) < 0)
     {
         perror("Configuración de escucha de conexiones fallida.");
+        close(socketEscucha);
         exit(EXIT_FAILURE);
     }
 
