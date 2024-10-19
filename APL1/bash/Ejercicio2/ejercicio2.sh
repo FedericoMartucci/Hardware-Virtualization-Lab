@@ -176,10 +176,6 @@ if [[ "$separador" =~ [0-9\-] ]]; then
   exit 1
 fi
 
-if [[ ! "$escalar" =~ ^-?[0-9]+([.][0-9]+)?$ ]] ; then
-  echo "Error: El valor del parámetro --producto debe ser un número."
-  exit 1
-fi
 
 # Validar matriz
 validar_matriz "$archivo_matriz" "$separador"
@@ -187,6 +183,12 @@ status=$?
 if [ $status -ne 0 ]; then
   echo "Error en la validación de la matriz. Código de error: $status"
   exit $status
+fi
+
+# Validar el valor del escalar solo si se especificó
+if [ -n "$escalar" ] && [[ ! "$escalar" =~ ^-?[0-9]+([.][0-9]+)?$ ]]; then
+  echo "Error: El valor del parámetro --producto debe ser un número."
+  exit 1
 fi
 
 # Generar el nombre del archivo de salida

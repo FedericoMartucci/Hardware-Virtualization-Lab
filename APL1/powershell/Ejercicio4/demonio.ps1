@@ -123,16 +123,15 @@ function Global:zipear {
 function Global:Monitorear {
     param (
         [string]$FullPath,
-        [string]$Timestamp,
-        [string]$Directorio,
-        [string]$Salida
+        [string]$Timestamp
     )
 
-    $fechaMonitoreo=Get-Date -Date $Timestamp -Format "yyyyMMdd-HHmmss"
-    $logPath = "$Salida/log-$fechaMonitoreo.txt"
+    # Convertir la ruta relativa a absoluta
+    $rutaDirectorioAbs = Resolve-Path -Path $Directorio
+    $rutaSalidaAbs = Resolve-Path -Path $Salida
 
-    # Convertir el directorio monitoreado a ruta absoluta si es relativo
-    $rutaDirectorioAbs = $(Resolve-Path "$Directorio").Path
+    $fechaMonitoreo=Get-Date -Date $Timestamp -Format "yyyyMMdd-HHmmss"
+    $logPath = "$rutaSalidaAbs/log-$fechaMonitoreo.txt"
 
     #Añadimos el reporte al archivo log
     $name = [System.IO.Path]::GetFileName($FullPath)
@@ -154,7 +153,7 @@ function Global:Monitorear {
         }
 
         # Indicamos el nombre del archivo zip
-        $zipPath = "$Salida/$fechaMonitoreo.zip"
+        $zipPath = "$rutaSalidaAbs/$fechaMonitoreo.zip"
 
         # Zipear todos los duplicados incluyendo el archivo original
         $rutaRelativa = [System.IO.Path]::GetRelativePath($rutaDirectorioAbs, $FullPath)
@@ -170,16 +169,13 @@ function Global:Monitorear {
 function CrearMonitor {
     param (
         [string]$Directorio,
-        [string]$Salida
+        [string]$Salida,
+        [string]$HashEventos
     )
-
-    # Convertir la ruta relativa a absoluta
-    $Directorio = Resolve-Path -Path $Directorio
-    $SalidaLogs = Resolve-Path -Path $Salida
 
     # Crear el FileSystemWatcher
     $global:watcher = New-Object System.IO.FileSystemWatcher
-    $watcher.Path = $Directorio
+    $watcher.Path = Resolve-Path -Path $Directorio
     $watcher.Filter = "*.*"  # Monitorea todos los archivos
     $watcher.IncludeSubdirectories = $true
     $watcher.EnableRaisingEvents = $true
@@ -187,25 +183,25 @@ function CrearMonitor {
     # Acción al detectar cambio
     $action = {
         $details = $event.SourceEventArgs
-        $Name = $details.Name
         $FullPath = $details.FullPath
         $Timestamp = $event.TimeGenerated
 
-        Monitorear -FullPath $FullPath -Timestamp $Timestamp -Directorio $Directorio -Salida $SalidaLogs
+        Monitorear -FullPath $FullPath -Timestamp $Timestamp
     }
 
     $global:handlers = . {
-        Register-ObjectEvent $watcher -EventName Changed -Action $action -SourceIdentifier "ChangedEvent" 
-        Register-ObjectEvent $watcher -EventName Created -Action $action -SourceIdentifier "CreatedEvent"
-        Register-ObjectEvent $watcher -EventName Renamed -Action $action -SourceIdentifier "RenamedEvent"
+        Register-ObjectEvent $watcher -EventName Changed -Action $action -SourceIdentifier "ChangedEvent-$HashEventos" 
+        Register-ObjectEvent $watcher -EventName Created -Action $action -SourceIdentifier "CreatedEvent-$HashEventos"
+        Register-ObjectEvent $watcher -EventName Renamed -Action $action -SourceIdentifier "RenamedEvent-$HashEventos"
     }
     
     # Crear el Job en segundo plano
     $job = Start-Job -ScriptBlock {
+       param ($Directorio, $Salida)
         while ($true) {
             Start-Sleep -Seconds 1  # Evitar el consumo excesivo de CPU
         }
-    }
+    } -ArgumentList $Directorio, $Salida
     
     $jobId = $job.Id
 
@@ -220,8 +216,10 @@ function IniciarDemonio {
         [string]$Salida
     )
 
-    # Definir la ruta del archivo PID
-    $pidFile = "$PSScriptRoot\pid-monitor.pid"
+    # Generar el hash MD5 del directorio y crear el nombre del archivo PID
+    $rutaDirectorioAbs = Resolve-Path -Path $Directorio
+    $hash = (Get-FileHash -Algorithm MD5 -InputStream ([System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes($rutaDirectorioAbs)))).Hash
+    $pidFile = "/tmp/monitor_$hash.pid"
 
     # Verificar si el archivo PID ya existe
     if (Test-Path $pidFile) {
@@ -239,7 +237,7 @@ function IniciarDemonio {
     }
 
     # Ejecutar el script en segundo plano
-    CrearMonitor -Directorio $Directorio -Salida $Salida
+    CrearMonitor -Directorio $Directorio -Salida $Salida -HashEventos $hash
 }
 
 function FinalizarDemonio {
@@ -247,8 +245,10 @@ function FinalizarDemonio {
         [string]$Directorio
     )
 
-    # Definir la ruta del archivo PID
-    $pidFile = "$PSScriptRoot\pid-monitor.pid"
+    # Generar el hash MD5 del directorio y crear el nombre del archivo PID
+    $rutaDirectorioAbs = Resolve-Path -Path $Directorio
+    $hash = (Get-FileHash -Algorithm MD5 -InputStream ([System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes($rutaDirectorioAbs)))).Hash
+    $pidFile = "/tmp/monitor_$hash.pid"
 
     # Verificar si el archivo PID existe
     if (Test-Path $pidFile) {

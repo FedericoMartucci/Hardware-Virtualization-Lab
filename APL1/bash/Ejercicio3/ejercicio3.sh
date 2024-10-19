@@ -15,106 +15,87 @@
 #                                                       #
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 
-declare ERROR_DIRECTORIO_VACIO=1;
-declare ERROR_DIRECTORIO_INEXISTENTE=2;
+declare ERROR_DIRECTORIO_VACIO=1
+declare ERROR_DIRECTORIO_INEXISTENTE=2
 
-function ayuda(){
-    echo "USO: $0 [-d|--directorio <directorio_a_analizar_duplicados>]";
+function ayuda() {
+    echo "USO: $0 [-d|--directorio <directorio_a_analizar_duplicados>]"
     echo "DESCRIPCIÓN: Este script identifica archivos duplicados de forma recursiva. \
-          Se considera que un archivo está duplicado si su nombre y tamaño son iguales.";
-    echo "OPCIONES:";
-    echo "  -d, --directorio   Ruta del directorio a analizar.";
-    echo "  -h, --help         Muestra este mensaje de ayuda.";
+          Se considera que un archivo está duplicado si su nombre y tamaño son iguales."
+    echo "OPCIONES:"
+    echo "  -d, --directorio   Ruta del directorio a analizar."
+    echo "  -h, --help         Muestra este mensaje de ayuda."
     exit 0
 }
-
 function buscar_duplicados(){
-    # Ejecuto `ls -ltR` y se lo paso a un AWK con arrays asociativos para guardar info de los archivos:
-    #   - Key: <nombre_archivo>-<tamaño_archivo>
-    #   - Value: [<path_1>, <path_2>, <path_3>]
-    
     local directorio=$1
+    declare -A files
+    declare -A duplicates
 
-    find $directorio -type f -exec ls -l {} + | awk '
-    {
-        # Obtenemos el tamaño del archivo (campo 5) y su nombre completo con ruta (campo 9)
-        size = $5
-        filename = $9
+    # Buscar todos los archivos recursivamente
+    while IFS= read -r -d '' file; do
+        size=$(stat -c%s "$file")
+        filename=$(basename "$file") 
+        key="$filename|$size" 
 
-        gsub(".*/", "", filename)
-        
-        # Guardamos en un array asociativo, donde la clave es "nombre|tamaño"
-        key = filename "|" size
-        
-        # Si la clave ya existe, significa que el archivo es duplicado
+        if [[ -n "${files[$key]}" ]]; then
+            # Si ya existe en el array, lo añadimos a duplicados
+            duplicates[$key]+=$'\t'"$file"
+        else
+            # Si no existe, lo añadimos al array de archivos
+            files[$key]=$'\t'"$file"
+        fi
+    done < <(find "$directorio" -type f -print0)
 
-        if (files[key] != "") {
-            if(duplicates[key] != "") {
-                duplicates[key] = duplicates[key] "\n\t" $9
-            }
-            else {
-                duplicates[key] = files[key] "\n\t" $9
-            }
-        } else {
-            files[key] = "\t" $9
-        }
-    }
-
-    END {
-        # Imprimir los archivos duplicados
-        
-        for (key in duplicates) {
-            split(key, arr, "|")  # Separa el nombre y el tamaño
-            print arr[1]  # Imprime el nombre del archivo
-            
-            # Imprime todas las rutas en las que se encontró el duplicado
-            print duplicates[key]
-        }
-    }
-    '
+    # Imprimir los archivos duplicados encontrados
+    for key in "${!duplicates[@]}"; do
+        echo "${key%%|*}" # Imprimir nombre del archivo
+        echo -e "${files[$key]}\n${duplicates[$key]}"
+    done
 }
 
 directorioEntrada=""
 
-opciones=$(getopt -o d:h --l directorio:,help -- "$@" 2> /dev/null);
+opciones=$(getopt -o d:h --l directorio:,help -- "$@" 2> /dev/null)
 
 if [ "$?" != "0" ]; then
-    echo "Opcion/es incorrectas";
-    exit 0;
+    echo "Opción/es incorrectas"
+    exit 0
 fi
 
-eval set -- "$opciones";
+eval set -- "$opciones"
 
 while true; do
     case "$1" in
         -d|--directorio)
             directorioEntrada=$2
-            shift 2;
+            shift 2
             ;;
         -h|--help)
-            ayuda 
+            ayuda
             ;;
         --)
-            shift;
-            break;
+            shift
+            break
             ;;
         *)
             echo "Error: Opción desconocida $1"
             ayuda
-            ;; 
+            ;;
     esac
 done
 
-# Verificar que se haya proporcionado un directorio de entrada no vacio
+# Verificar que se haya proporcionado un directorio de entrada no vacío
 if [ -z "$directorioEntrada" ]; then
-    echo "ERROR: Se debe especificar un directorio válido.";
-    exit $ERROR_DIRECTORIO_VACIO;
+    echo "ERROR: Se debe especificar un directorio válido."
+    exit $ERROR_DIRECTORIO_VACIO
 fi
 
 # Verificar que se haya proporcionado el directorio de entrada correctamente
 if ! [ -d "$directorioEntrada" ]; then
-    echo "ERROR: El directorio '$directorioEntrada' no existe.";
-    exit $ERROR_DIRECTORIO_INEXISTENTE;
+    echo "ERROR: El directorio '$directorioEntrada' no existe."
+    exit $ERROR_DIRECTORIO_INEXISTENTE
 fi
+
 
 buscar_duplicados "$directorioEntrada"

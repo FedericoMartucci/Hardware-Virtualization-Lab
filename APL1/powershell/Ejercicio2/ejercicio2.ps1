@@ -42,47 +42,27 @@ Carácter separador de columnas en el archivo de la matriz. Es obligatorio.
 El script valida la matriz asegurando que todas las filas tienen el mismo número de columnas, que los valores son numéricos, y que el archivo no esté vacío.
 #>
 
-
 param (
-    [Parameter(Mandatory = $true)]
-    [string]$matriz,
-
-    [Parameter(Mandatory = $false)]
+    [Parameter(Mandatory = $true, ParameterSetName = "ProductoEscalar")]
     [int]$producto,
 
-    [Parameter(Mandatory = $false)]
+    [Parameter(Mandatory = $true, ParameterSetName = "Transponer")]
     [switch]$trasponer,
+
+    [Parameter(Mandatory = $true)]
+    [string]$matriz,
 
     [Parameter(Mandatory = $true)]
     [string]$separador
 )
 
-
 # Constantes para manejar errores
-$Script:ERROR_PRODUCTO_TRASPONER_JUNTOS = 1
 $Script:ERROR_ARCHIVO_NO_ENCONTRADO = 2
 $Script:ERROR_ARCHIVO_NO_VALIDO = 3
 $Script:ERROR_MATRIZ_INVALIDA = 4
 $Script:ERROR_SEPARADOR_INVALIDO = 5
-$Script:ERROR_PRODUCTO_TRASPONER_FALTANTES = 6
 
-
-
-# Validaciones de parámetros
-# Verificar que se haya enviado al menos uno de las operaciones
-if(-not($producto) -and -not($trasponer)){
-    Write-Error "Debe elegir usar -producto o -trasponer."
-    exit $ERROR_PRODUCTO_TRASPONER_FALTANTES
-}
-
-
-# Verificar que no se hayan enviado ambas operacioens juntas
-if ($producto -and $trasponer) {
-    Write-Error "No se puede usar -producto y -trasponer juntos."
-    exit $ERROR_PRODUCTO_TRASPONER_JUNTOS
-}
-
-# Verificar que matriz exista
+# Verificar que la matriz exista
 if (-not (Test-Path $matriz)) {
     Write-Error "El archivo de matriz no existe."
     exit $ERROR_ARCHIVO_NO_ENCONTRADO
@@ -156,12 +136,15 @@ function Producto-Escalar {
     return $matrizEscalar
 }
 
-# Realizar la operación indicada segun corresponda
+# Realizar la operación indicada según corresponda
 $resultado = @()
-if ($producto) {
-    $resultado = Producto-Escalar -matriz $matrizArray -escalar $producto
-} elseif ($trasponer) {
-    $resultado = Transponer-Matriz $matrizArray
+switch ($PSCmdlet.ParameterSetName) {
+    "ProductoEscalar" {
+        $resultado = Producto-Escalar -matriz $matrizArray -escalar $producto
+    }
+    "Transponer" {
+        $resultado = Transponer-Matriz $matrizArray
+    }
 }
 
 # Obtener el nombre del archivo de entrada y generar el nombre del archivo de salida

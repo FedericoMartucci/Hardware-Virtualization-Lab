@@ -99,13 +99,13 @@ function main() {
     while true; do
         # Se evalua recursivamente los eventos de creacion y modificacion de archivos contenidos
         # en el directorio enviado por el parametro --directorio.
-        inotifywait --recursive --event create --event modify "$directorio" | while read path action file; do
+        inotifywait --recursive --event create --event moved_to --event modify --format '%w|%e|%f' "$directorio" | while IFS='|' read -r path action file; do
             archivo_completo="$path$file"
             nombre_archivo=$(basename "$file")
             tamano_archivo=$(stat -c%s "$archivo_completo")
 
             # Se busca duplicados en el directorio (por nombre y tamaño)
-            duplicado=$(find "$directorio" -type f -not -path "$archivo_completo" -name "$nombre_archivo" -size "$tamano_archivo"c)
+            duplicado=$(find "$directorio" -type f -not -path "$archivo_completo" -name "$nombre_archivo" -size "${tamano_archivo}"c)
 
             if [[ -n "$duplicado" ]]; then
                 timestamp=$(date +%Y%m%d-%H%M%S)
@@ -121,34 +121,30 @@ function main() {
 }
 
 function existeDemonio() {
-	nombrescript=$(readlink -f $0)
-	dir_base=`dirname "$nombrescript"`
-    pid_files=($(find "$dir_base" -name "*.pid" -type f))
-    local pid directorio procesos rutaabs1 rutaabs2
-    rutaabs1=$(readlink -e "$1")
-    if [[ -z "$rutaabs1" ]]; then
-        echo "El directorio proporcionado no existe."
-        return 2
-    fi
-    for pid_file in "${pid_files[@]}"; do
-        pid=$(cat "$pid_file")
-        procesos=$(ps -p "$pid" -o args=)
-        if [[ "$procesos" =~ -d\ ([^\ ]*) ]]; then
-            directorio="${BASH_REMATCH[1]}"
-            rutaabs2=$(readlink -e "$directorio")
-            if [[ "$rutaabs1" == "$rutaabs2" ]]; then
-                echo "El directorio '$1' está siendo monitoreado por el proceso con PID $pid."
-                return 1
-            fi
+    local directorio=$(realpath "$1")
+    
+    local pidFile="/tmp/monitor_$(echo "$directorio" | md5sum | awk '{print $1}').pid"
+    
+    
+    if [[ -f "$pidFile" ]]; then
+        local pid=$(cat "$pidFile")
+        
+        # Verificar si el proceso aún está activo
+        if ps -p "$pid" > /dev/null 2>&1; then
+            echo "El directorio '$directorio' está siendo monitoreado por el proceso con PID $pid."
+            return 1
+        else
+            # Si el archivo de PID existe pero el proceso no está activo, eliminar el archivo
+            rm "$pidFile"
         fi
-    done
-    echo "El directorio '$1' no se encuentra monitoreado. Se procede a monitorearlo."
+    fi
+    echo "El directorio '$directorio' no se encuentra monitoreado. Se procede a monitorearlo."
     return 0
 }
 
 function iniciarDemonio() {
     
-    directorio=$2
+    directorio=$(realpath "$2")
 
     # Esta validación permite al script manejar de distinta
     # manera la ejecución en primer y segundo plano
@@ -165,49 +161,49 @@ function iniciarDemonio() {
 		nohup bash $0 "$1" "-d" "$directorio" "-s" "$salida"  > /dev/null 2>&1 &
 	else
         salida=$4
-		nombrescript=$(readlink -f "$0")
-		dir_base=$(dirname "$nombrescript")
 
 		#Almacenamos el PID del proceso para luego eliminarlo e iniciamos el main
-   	    pidFile="$dir_base/$$.pid";
+   	    pidFile="/tmp/monitor_$(echo "$directorio" | md5sum | awk '{print $1}').pid"
+        
+
 		touch "$pidFile"
    	    echo $$ > "$pidFile"
+
 		main "$directorio" "$salida"
+
+        rm "$pidFile"
 	fi
 }
 
 
 function eliminarDemonioUnDirectorio() {
-    nombreScript=$(readlink -f $0)
-    dir_base=`dirname "$nombreScript"`
-
-    # Verifica si $dir_base tiene un valor antes de usar find
-    if [ -z "$dir_base" ]; then
-        echo "ERROR: el directorio del script no está definido."
-        exit $ERROR_DIRECTORIO;
-    fi
-
-    # Buscar archivos PID del demonio
-    pid_files=($(find "$dir_base" -name "*.pid" -type f 2>/dev/null))
-    for pid_file in "${pid_files[@]}"; do
-        pid=$(cat "$pid_file")
-        procesos=$(ps -p "$pid" -o args=)
-
-        # Si el proceso monitorea el directorio correcto, lo matamos
-        # Debemos estar posicionados en el directorio donde se ejecuto el demonio para poder matarlo,
-        # de esta forma evitamos interpolaciones con otros demonios que puedan existir para carpetas con nombres similares.
-        if [[ "$procesos" =~ "$1" ]]; then
-            echo "Eliminando el demonio para el directorio '$1'..."
+    local directorio=$(realpath "$1")
+    local pidFile="/tmp/monitor_$(echo "$directorio" | md5sum | awk '{print $1}').pid"
+    
+    if [[ -f "$pidFile" ]]; then
+        local pid=$(cat "$pidFile")
+        
+        # Verificar si el proceso está activo antes de matarlo
+        if ps -p "$pid" > /dev/null 2>&1; then
+            echo "Eliminando el demonio para el directorio '$directorio'..."
             
-            # Mata todos los procesos hijos primero
-            pkill -TERM -P "$pid" 
+            # Matar todos los procesos hijos primero y luego el proceso principal
+            pkill -TERM -P "$pid"
             kill "$pid"
-            rm "$pid_file"
-
+            
+            # Eliminar el archivo de PID
+            rm "$pidFile"
             exit 0
+        else
+            # Si el proceso no está activo, eliminar el archivo de PID
+            rm "$pidFile"
+            echo "No se encontró un demonio activo para el directorio '$directorio'."
+            exit $ERROR_DIRECTORIO
         fi
-    done
-    echo "No se encontró un demonio para el directorio '$1'."
+    else
+        echo "No se encontró un archivo de PID para el directorio '$directorio'."
+        exit $ERROR_DIRECTORIO
+    fi
 }
 
 

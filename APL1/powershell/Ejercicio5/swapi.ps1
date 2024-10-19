@@ -53,17 +53,19 @@ if (-not $people -and -not $film) {
 
 function Save-ToCache {
     param ($id, $type, $data)
-    $cachePath = "$PSScriptRoot/cache/$type-$id.json"
+    
+    $cachePath = "/tmp/swapi_cache/$type-$id.json"
 
-    if (-not (Test-Path "$PSScriptRoot/cache")) {
-        New-Item -Path "$PSScriptRoot/cache" -ItemType Directory | Out-Null
+    if (-not (Test-Path "/tmp/swapi_cache")) {
+        New-Item -Path "/tmp/swapi_cache" -ItemType Directory | Out-Null
     }
     $data | Out-File -FilePath $cachePath
 }
 
 function Get-FromCache {
     param ($id, $type)
-    $cachePath = "$PSScriptRoot/cache/$type-$id.json"
+
+    $cachePath = "/tmp/swapi_cache/$type-$id.json"
 
     if (Test-Path $cachePath) {
         return Get-Content $cachePath -Raw | ConvertFrom-Json

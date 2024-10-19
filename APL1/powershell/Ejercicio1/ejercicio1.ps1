@@ -78,6 +78,12 @@ function obtenerNumerosGanadores {
     # Usar $PSScriptRoot para obtener el directorio del script
     $rutaArchivo = Join-Path -Path $PSScriptRoot -ChildPath "ganadores.csv"
 
+    # Verificar si el archivo de ganadores existe
+    if (-not (Test-Path $rutaArchivo)) {
+        Write-Host "ERROR: El archivo 'ganadores.csv' no existe en el directorio del script."
+        exit 1
+    }
+
     # Leer el archivo CSV y obtener los números ganadores
     Get-Content -Path $rutaArchivo | ForEach-Object {
         $numeros = $_ -split ','
@@ -127,7 +133,7 @@ function procesarArchivos {
             $aciertos = contarAciertos $numeros $numerosGanadores
 
             if ($aciertos -ge 3) {
-                $jsonData["$aciertos`_aciertos"] += @{
+                $jsonData["$aciertos`_aciertos"] += [ordered]@{
                     agencia = $agencia
                     jugada = $jugada
                 }

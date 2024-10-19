@@ -43,35 +43,39 @@ function ayuda() {
 function buscar_data() {
     local type=$1
     local id=$2
-    local cache_dir="./cache"
-    # Obtener la ruta del directorio del script
-    local script_dir=$(dirname "$0")
-    
-    mkdir -p "$script_dir/$cache_dir"
+    local cache_dir="/tmp/swapi_cache"
 
-    local cache_file="$cache_dir/"$type$id".json"
+    mkdir -p "$cache_dir"
+
+    local cache_file="$cache_dir/${type}_${id}.json"
     local api_url="https://www.swapi.tech/api/$type/$id"
 
-    
     if [[ -s "$cache_file" ]]; then
         cat "$cache_file"
     else
+        # Intentar obtener la respuesta de la API
         response=$(curl -s "$api_url")
-        
+
+        # Verificar si la conexión tuvo éxito
+        if [[ $? -ne 0 || -z "$response" ]]; then
+            return 1
+        fi
+
         clean_response=$(echo "$response" | tr -cd '\11\12\15\40-\176')
 
         # Verificar si la respuesta es JSON válido
         if echo "$clean_response" | jq . > /dev/null 2>&1; then
             echo "$clean_response" | jq . > "$cache_file"
-            cat "$cache_file"
+            echo "$clean_response" # Imprimir el contenido para que procesar_ids lo maneje
         else
-            echo "ERROR: Respuesta invalida para el tipo $type con ID: $id"
+            echo "ERROR: Respuesta inválida para el tipo $type con ID: $id"
             echo "$clean_response"  # Imprimir la respuesta cruda para depuración
             return 1
         fi
     fi
 }
 
+# Función para procesar los IDs
 function procesar_ids() {
     local type=$1
     local ids=$2
@@ -82,8 +86,14 @@ function procesar_ids() {
 
     # Iterar sobre cada ID y obtener los datos correspondientes
     for id in "${id_array[@]}"; do
-        # Llamar a la función fetch_data para obtener datos de la API o caché
+        # Llamar a la función buscar_data para obtener datos de la API o caché
         data=$(buscar_data "$type" "$id")
+
+        # Verificar si buscar_data falló
+        if [[ $? -ne 0 ]]; then
+            echo "Error al buscar datos para el ID $id de tipo $type."
+            continue
+        fi
 
         mensaje=$(echo "$data" | jq -r .message)
         
@@ -96,6 +106,8 @@ function procesar_ids() {
         fi
     done
 }
+
+
 
 people_ids=""
 film_ids=""
