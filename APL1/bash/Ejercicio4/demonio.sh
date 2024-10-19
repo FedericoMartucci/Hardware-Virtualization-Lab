@@ -99,7 +99,7 @@ function main() {
     while true; do
         # Se evalua recursivamente los eventos de creacion y modificacion de archivos contenidos
         # en el directorio enviado por el parametro --directorio.
-        inotifywait --recursive --event create --event moved_to --event modify "$directorio" | while read path action file; do
+        inotifywait --recursive --event create --event moved_to --event modify --format '%w|%e|%f' "$directorio" | while IFS='|' read -r path action file; do
             archivo_completo="$path$file"
             nombre_archivo=$(basename "$file")
             tamano_archivo=$(stat -c%s "$archivo_completo")
@@ -118,9 +118,6 @@ function main() {
             fi
         done
     done
-
-
-
 }
 
 function existeDemonio() {
