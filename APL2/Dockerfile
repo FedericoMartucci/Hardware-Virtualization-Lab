@@ -6,7 +6,7 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Copias todo el contenido actual a /apl que sera lo que se encuentre en el contenedor
+# Copias todo el contenido actual a /apl que sera lo que se encuentre en el cont
 COPY . /apl
 
 # le decis que justamente vas a trabajar en ese path en el contenedor
