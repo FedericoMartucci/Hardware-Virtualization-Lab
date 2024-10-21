@@ -32,13 +32,11 @@
 #include <unistd.h>
 #include <cstring>
 #include <thread>
-#include <map>
+#include <list>
+#include <sstream>
 
 using namespace std;
 
-const char* SEM_CLIENTE = "/sem_cliente";
-const char* SEM_SERVIDOR = "/sem_servidor";
-const char* SEM_PUNTOS = "/sem_puntos";
 const char* LOCK_FILE = "/tmp/servidor_memoria.lock";
 
 // Estructura para cada pregunta
@@ -46,25 +44,21 @@ typedef struct
 {
     string pregunta;
     vector<string> opciones;
-    int respuestaCorrecta;
+    char respuestaCorrecta;
 } Pregunta;
 
 // Estructura para el cliente y su puntaje
 typedef struct
 {
-    int socket;
+    int socketId;
     int puntos;
-    int respuestaCliente;
     string nickname;
 } Jugador;
 
 // Variables globales
-map<pid_t, Jugador> jugadores;
+list<Jugador> jugadores;
 vector<Pregunta> preguntas;
 int lock_fd;
-sem_t *sem_cliente;
-sem_t *sem_servidor;
-sem_t *sem_puntos;
 
 void mostrarAyuda()
 {
@@ -169,12 +163,6 @@ void manejarSIGUSR1(int signal)
     if (jugadores.empty())
     {
         cout << "Recibida señal SIGUSR1. Finalizando servidor..." << endl;
-        sem_close(sem_cliente);
-        sem_unlink(SEM_CLIENTE);
-        sem_close(sem_servidor);
-        sem_unlink(SEM_SERVIDOR);
-        sem_close(sem_puntos);
-        sem_unlink(SEM_PUNTOS);
         close(lock_fd);
         unlink(LOCK_FILE);
         exit(EXIT_SUCCESS);
@@ -187,27 +175,6 @@ void manejarSIGUSR1(int signal)
 
 void limpiarRecursos(int signal)
 {
-    // Liberamos semáforo del cliente
-    if (sem_cliente)
-    {
-        sem_close(sem_cliente);
-        sem_unlink(SEM_CLIENTE);
-    }
-
-    // Liberamos semáforo del servidor
-    if (sem_servidor)
-    {
-        sem_close(sem_servidor);
-        sem_unlink(SEM_SERVIDOR);
-    }
-
-    // Liberamos semáforo de los puntos
-    if (sem_puntos)
-    {
-        sem_close(sem_puntos);
-        sem_unlink(SEM_PUNTOS);
-    }
-
     // Liberamos archivo de bloqueo
     if (lock_fd != -1)
     {
@@ -216,33 +183,6 @@ void limpiarRecursos(int signal)
     }
 
     exit(EXIT_SUCCESS);
-}
-
-void inicializarSemaforos()
-{
-    sem_cliente = sem_open(SEM_CLIENTE, O_CREAT, 0666, 0);
-    if (sem_cliente == SEM_FAILED)
-    {
-        perror("Error al crear semáforo de cliente");
-        limpiarRecursos(0);
-        exit(EXIT_FAILURE);
-    }
-
-    sem_servidor = sem_open(SEM_SERVIDOR, O_CREAT, 0666, 0);
-    if (sem_servidor == SEM_FAILED)
-    {
-        perror("Error al crear semáforo de servidor");
-        limpiarRecursos(0);
-        exit(EXIT_FAILURE);
-    }
-
-    sem_puntos = sem_open(SEM_PUNTOS, O_CREAT, 0600, 0);
-    if (sem_puntos == SEM_FAILED)
-    {
-        perror("Error al crear semáforo de puntos");
-        limpiarRecursos(0);
-        exit(EXIT_FAILURE);
-    }
 }
 
 int cargarPreguntas(const char *archivo, int cantidadRecibida)
@@ -259,14 +199,15 @@ int cargarPreguntas(const char *archivo, int cantidadRecibida)
     while (getline(file, linea) && cantidadDePreguntas < cantidadRecibida)
     {
         string pregunta, opcion1, opcion2, opcion3;
-        int respuesta;
+        char respuesta;
 
         size_t pos = linea.find(",");
         pregunta = linea.substr(0, pos);
         linea.erase(0, pos + 1);
 
         pos = linea.find(",");
-        respuesta = stoi(linea.substr(0, pos));
+        string respuestaStr = linea.substr(0, pos);
+        respuesta = respuestaStr[0];
         linea.erase(0, pos + 1);
 
         pos = linea.find(",");
@@ -333,75 +274,136 @@ int configurarSocket(int cantUsuarios, int puerto) {
     return socketEscucha;
 }
 
-void hilo(int socketId)
-{
-    time_t ticks = time(NULL);
-    char sendBuff[2000];
-    snprintf(sendBuff, sizeof(sendBuff), "%.24s\r\n", ctime(&ticks));
+void agregarJugador(int socketId, char buffer[]) {
+    Jugador nuevoJugador;
+    nuevoJugador.socketId = socketId;
+    nuevoJugador.puntos = 0;
+    nuevoJugador.nickname = string(buffer);
 
-    write(socketId, sendBuff, strlen(sendBuff));
-    close(socketId);
+    jugadores.push_back(nuevoJugador);
+    cout << "Nuevo jugador agregado con nickname: " << nuevoJugador.nickname 
+         << " y ID: " << nuevoJugador.socketId << endl;
 }
 
-// while (true)
-// {
-//     mc->cliente_pid = 0;
-//     sem_post(sem_servidor);
-//     sem_wait(sem_cliente); // Esperamos al cliente
-//     mc->puntos = 0;
-//     std::cout << "Cliente conectado.\n";
+vector<char> serializarPregunta(const Pregunta &pregunta) {
+    vector<char> buffer;
 
-//     // Mostramos preguntas y procesamos respuestas
-//     for (int i = 0; i < preguntasCargadas; ++i)
-//     {
-//         // Esperamos respuesta del cliente
-//         sem_wait(sem_cliente);
-//         // Leemos respuesta del cliente
-//         if (mc->preguntas[i].respuestaCliente == mc->preguntas[i].respuestaCorrecta)
-//         {
-//             mc->puntos++;
-//         }
-//     }
-//     sem_post(sem_puntos); // Permitimos al cliente finalizar
-//     std::cout << "Fin de la partida. Esperando usuario...\n";
-// }
+    // Serializar la longitud y el contenido de la pregunta
+    int pregunta_len = pregunta.pregunta.size();
+    buffer.insert(buffer.end(), reinterpret_cast<const char*>(&pregunta_len), reinterpret_cast<const char*>(&pregunta_len) + sizeof(int));
+    buffer.insert(buffer.end(), pregunta.pregunta.begin(), pregunta.pregunta.end());
 
+    // Serializar el número de opciones
+    int num_opciones = pregunta.opciones.size();
+    buffer.insert(buffer.end(), reinterpret_cast<const char*>(&num_opciones), reinterpret_cast<const char*>(&num_opciones) + sizeof(int));
 
-// void handle_client(int client_socket, std::map<int, ClientInfo> &clients, std::vector<std::string> &questions)
-// {
-//     char buffer[1024];
-//     int question_index = 0;
+    // Serializar cada opción
+    for (const string &opcion : pregunta.opciones) {
+        int opcion_len = opcion.size();
+        buffer.insert(buffer.end(), reinterpret_cast<const char*>(&opcion_len), reinterpret_cast<const char*>(&opcion_len) + sizeof(int));
+        buffer.insert(buffer.end(), opcion.begin(), opcion.end());
+    }
 
-//     while (true)
-//     {
-//         memset(buffer, 0, sizeof(buffer));
-//         int valread = read(client_socket, buffer, 1024);
+    // Serializar la respuesta correcta
+    buffer.insert(buffer.end(), reinterpret_cast<const char*>(&pregunta.respuestaCorrecta), reinterpret_cast<const char*>(&pregunta.respuestaCorrecta) + sizeof(int));
 
-//         if (valread == 0)
-//         {
-//             std::cout << "Cliente desconectado." << std::endl;
-//             close(client_socket);
-//             return;
-//         }
+    return buffer;
+}
 
-//         std::string client_response(buffer);
-//         std::cout << "Respuesta del cliente: " << client_response << std::endl;
+bool enviarBuffer(int socket, const vector<char> &buffer) {
+    int size = buffer.size();
+    // Enviar el tamaño del buffer
+    int bytesSent = send(socket, &size, sizeof(int), 0);
+    if (bytesSent <= 0) {
+        if (bytesSent == 0) {
+            // El cliente se desconectó
+            cerr << "El cliente se ha desconectado." << endl;
+        } else {
+            // Error en el envío
+            perror("Error en send");
+        }
+        return false;
+    }
+    // Enviar el contenido del buffer
+    bytesSent = send(socket, buffer.data(), size, 0);
+    if (bytesSent <= 0) {
+        if (bytesSent == 0) {
+            // El cliente se desconectó
+            cerr << "El cliente se ha desconectado." << endl;
+        } else {
+            // Error en el envío
+            perror("Error en send");
+        }
+        return false;
+    }
+    return true;
+}
 
-//         // Enviar la siguiente pregunta
-//         if (question_index < questions.size())
-//         {
-//             std::string question = questions[question_index];
-//             send(client_socket, question.c_str(), question.size(), 0);
-//             question_index++;
-//         }
-//         else
-//         {
-//             std::string end_msg = "Fin del juego.";
-//             send(client_socket, end_msg.c_str(), end_msg.size(), 0);
-//             break;
-//         }
-//     }
-// }
+vector<char> recibirBuffer(int socket) {
+    int size;
+    // Recibir el tamaño del buffer
+    int bytesReceived = recv(socket, &size, sizeof(int), 0);
+    if (bytesReceived <= 0) {
+        if (bytesReceived == 0) {
+            // El cliente se desconectó
+            cerr << "El cliente se ha desconectado." << endl;
+        } else {
+            // Error en la recepción
+            perror("Error en recv");
+        }
+        return {};
+    }
+    // Reservar espacio para el contenido del buffer
+    vector<char> buffer(size);
+    // Recibir el contenido del buffer
+    bytesReceived = recv(socket, buffer.data(), size, 0);
+    if (bytesReceived <= 0) {
+        if (bytesReceived == 0) {
+            // El cliente se desconectó
+            cerr << "El cliente se ha desconectado." << endl;
+        } else {
+            // Error en la recepción
+            perror("Error en recv");
+        }
+        return {};
+    }
+    return buffer;
+}
+
+char deserializarRespuesta (const vector<char> &buffer){
+    char respuesta;
+    memcpy(&respuesta,buffer.data(), sizeof(respuesta));
+    return respuesta;
+}
+
+void cerrarSocketsClientes() {
+    for (auto it = jugadores.begin(); it != jugadores.end();) {
+        close(it->socketId);
+        it = jugadores.erase(it);
+    }
+}
+
+pair<int, list<Jugador>> obtenerGanadores() {
+    int puntajeMaximo = 0;
+    list<Jugador> ganadores;
+
+    // Encontrar la puntuación máxima
+    for (const auto& jugador : jugadores) {
+        if (jugador.puntos > puntajeMaximo) {
+            puntajeMaximo = jugador.puntos;
+        }
+    }
+
+    // Encontrar todos los jugadores con la puntuación máxima
+    for (const auto& jugador : jugadores) {
+        if (jugador.puntos == puntajeMaximo) {
+            ganadores.push_back(jugador);
+        }
+    }
+
+    return make_pair(puntajeMaximo, ganadores);
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -409,6 +411,8 @@ int main(int argc, char *argv[])
     int cantPreguntas = 0;
     int puerto = 0;
     int cantUsuarios = 0;
+    int usuariosConectados = 0;
+    int preguntasRealizadas = 0;
     int preguntasCargadas;
     int socketServidor;
 
@@ -431,9 +435,6 @@ int main(int argc, char *argv[])
     // Creamos archivo de bloqueo para evitar tener dos servidores en simultáneo.
     crearLockFile();
 
-    // Inicializamos los semaforos
-    inicializarSemaforos();
-
     // Cargamos las preguntas del archivo csv
     preguntasCargadas = cargarPreguntas(archivo, cantPreguntas);
 
@@ -442,16 +443,186 @@ int main(int argc, char *argv[])
 
     cout << "Servidor escuchando en el puerto " << puerto << endl;
 
-    while (true)
-    {
-        int socketComunicacion = accept(socketServidor, (struct sockaddr *)NULL, NULL);
-        
-        thread th(hilo, socketComunicacion);
-        th.detach();
+
+     while (usuariosConectados < cantUsuarios) {
+        int socketCliente;
+        if ((socketCliente = accept(socketServidor, NULL, NULL)) < 0) {
+            perror("Error en la conexión con el cliente.");
+            close(socketServidor);
+            limpiarRecursos(1);
+            exit(EXIT_FAILURE);
+        }
+
+        //Recibimos el nickname del cliente
+        char bufferConexion[1024] = {0};
+        int valorLeido = recv(socketCliente, bufferConexion, 1024, 0);
+        if (valorLeido < 0) {
+            perror("No se recibieron datos");
+            close(socketServidor);
+            limpiarRecursos(1);
+            exit(EXIT_FAILURE);
+        }
+
+        if (valorLeido == 0){
+            printf("\n Error de conexión: cliente desconectado.\n");
+            continue;
+        }
+
+        agregarJugador(socketCliente, bufferConexion);
+
+        char registro[1024];
+        // Convertimos el socketId a cadena
+        sprintf(registro, "%d", socketCliente);
+
+        // Concatenamos la cadena del número al buffer original
+        strcat(bufferConexion, " ");
+        strcat(bufferConexion, registro);
+
+        char leyenda[2048] = "Nuevo jugador conectado cuyo nickname y puerto son: ";
+        strcat(leyenda, bufferConexion);
+
+        int send_result = send(socketCliente, leyenda, strlen(leyenda), 0);
+        if (send_result < 0) {
+            perror("Error en send en armado de conexión con cliente");
+            close(socketCliente);
+            cerrarSocketsClientes();
+            exit(EXIT_FAILURE);
+        }
+        usuariosConectados++;
     }
 
-    printf("Finalizando servidor...\n");
+    // Notificar a cada cliente que el juego ha comenzado
+    for (auto it = jugadores.begin(); it != jugadores.end(); ) {
+        const char *message = "El juego ha comenzado\n";
+        printf("Notificando al cliente %d\n", it->socketId);
+        int noti = send(it->socketId, message, strlen(message), 0);
+
+        if (noti < 0) {
+            perror("Error al enviar mensaje");
+            printf("Cliente con socket %d eliminado de la lista debido a error de envío.\n", it->socketId);
+            close(it->socketId);
+            it = jugadores.erase(it);
+        } else if (noti == 0) {
+            printf("Cliente con socket %d desconectado.\n", it->socketId);
+            close(it->socketId);
+            it = jugadores.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    bool respMensaje = false;
+
+    while (preguntasRealizadas < preguntasCargadas && jugadores.size() > 1) {
+        auto jugador = jugadores.begin();
+        while (jugador != jugadores.end() && preguntasRealizadas < preguntasCargadas && jugadores.size() > 1) {
+            if (preguntasRealizadas < preguntasCargadas && jugadores.size() > 1) {
+                char menIni[1024] = {0};
+                printf("enviando turno a: %d\n", jugador->socketId);
+
+                // Intentar recibir para verificar la conexión
+                char bufferTest[1];
+                int recvResult = recv(jugador->socketId, bufferTest, sizeof(bufferTest), MSG_PEEK | MSG_DONTWAIT);
+                if (recvResult == 0 || (recvResult < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
+                    perror("Jugador desconectado detectado por recv");
+                    close(jugador->socketId);
+                    jugador = jugadores.erase(jugador);
+                    continue;
+                }
+                strcpy(menIni, "Siguiente turno!");
+                if (send(jugador->socketId, menIni, strlen(menIni), 0) <= 0) {
+                    perror("Error en mensaje o jugador desconectado");
+                    printf("Error, jugador desconectado o error de conexion\n");
+                    close(jugador->socketId);
+                    jugador = jugadores.erase(jugador);
+                    continue;
+                }
+                printf("turno enviado\n");
+
+                // Serializar pregunta para enviársela al cliente
+                vector<char> preguntaSerializada = serializarPregunta(preguntas[preguntasRealizadas]);
+
+                // Enviar pregunta al cliente
+                respMensaje = enviarBuffer(jugador->socketId, preguntaSerializada);
+                if (!respMensaje) {
+                    printf("Error, jugador desconectado o error de conexion\n");
+                    close(jugador->socketId);
+                    jugador = jugadores.erase(jugador);
+                    continue;
+                }
+
+                // Recibir respuesta del cliente y deserializarla
+                vector<char> respuestaRecibida = recibirBuffer(jugador->socketId);
+                if (respuestaRecibida.empty()) {
+                    printf("Error, jugador desconectado o error de conexion\n");
+                    close(jugador->socketId);
+                    jugador = jugadores.erase(jugador);
+                    continue;
+                }
+
+                char respuestaCliente = deserializarRespuesta(respuestaRecibida);
+
+                // Validar respuesta del cliente
+                if (preguntas[preguntasRealizadas].respuestaCorrecta == respuestaCliente) {
+                    jugador->puntos++; //gador.puntos pero en vez de la copia, accedes a literalmente esa pos de mem
+                }
+
+                jugador ++;
+            } else {
+                break;
+            }
+        }
+        preguntasRealizadas ++;
+    }
+
+    printf("Notificando finalización de juego\n");
+
+    if (jugadores.size() <= 1) {
+        printf("\n¡El juego ha terminado!: no hay suficientes jugadores para continuar.\n");
+        for (const auto& jugador : jugadores) {
+            const char* message = "¡El juego ha terminado!: no hay suficientes jugadores para continuar.\n";
+            send(jugador.socketId, message, strlen(message), 0);
+        }
+    } else {
+        printf("\n¡El juego ha terminado!\n");
+
+        // Obtener los ganadores y su puntaje
+        pair<int, list<Jugador>> resultado = obtenerGanadores();
+        int maxPuntuacion = resultado.first;
+        list<Jugador> ganadores = resultado.second;
+
+        // Construir mensaje de finalización del juego con ganadores
+        ostringstream mensajeFinal;
+        mensajeFinal << "¡El juego ha terminado!\n";
+        mensajeFinal << "Puntuación máxima: " << maxPuntuacion << "\n";
+        mensajeFinal << "Ganadores:\n";
+        for (const auto& ganador : ganadores) {
+            mensajeFinal << "ID Jugador: " << ganador.socketId << ", Nickname: " << ganador.nickname << ", Puntuación: " << ganador.puntos << "\n";
+            cout << "Ganador " << ganador.socketId << ", " << ganador.nickname << endl;
+        }
+        //cout << mensajeFinal.str();
+
+        string mensajeFinalStr = mensajeFinal.str();
+        const char* mensajeFinalCStr = mensajeFinalStr.c_str();
+
+        cout << "Mensaje final: " << mensajeFinalCStr << endl;
+
+        for (const auto& jugador : jugadores) {
+            int bytesEnviadosUltimoMensaje = send(jugador.socketId, mensajeFinalCStr, strlen(mensajeFinalCStr), 0);
+            if (bytesEnviadosUltimoMensaje == -1) {
+                cerr << "Error al enviar mensaje a ID Jugador: " << jugador.socketId << endl;
+            } else if (bytesEnviadosUltimoMensaje < (int) strlen(mensajeFinalCStr)) {
+                // Manejo de mensaje parcialmente enviado
+                cerr << "Mensaje parcialmente enviado a ID Jugador: " << jugador.socketId << endl;
+            }
+        }
+    }
+
+    cout << "Finalizando servidor..." << endl;
     limpiarRecursos(0);
+
+    // Cerrar el socket del servidor
+    close(socketServidor);
 
     return EXIT_SUCCESS;
 }
