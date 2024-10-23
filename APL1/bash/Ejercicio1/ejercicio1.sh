@@ -152,7 +152,7 @@ function procesarArchivos() {
     # Obtener los números ganadores y validar si se pudo leer correctamente
     numerosGanadores=($(obtenerNumerosGanadores))
     if [ $? -ne 0 ]; then
-        echo "ERROR: El archivo ganadores.csv no existe en el directorio actual."
+        echo "ERROR: El archivo ganadores.csv no existe en el directorio del script."
         exit 1  # Salir si no se puede obtener los números ganadores
     fi
 
