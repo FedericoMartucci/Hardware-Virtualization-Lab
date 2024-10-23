@@ -3,7 +3,7 @@
 #                                                       #
 #   APL1                                                #
 #   Nro ejercicio: 5                                    #
-#   Nro entrega: 1                                      #
+#   Nro entrega: Reentrega                              #
 #   Nombre del script: swapi.ps1                        #
 #                                                       #
 #   Integrantes:                                        #

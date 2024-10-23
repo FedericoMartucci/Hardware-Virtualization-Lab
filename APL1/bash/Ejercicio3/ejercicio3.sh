@@ -5,7 +5,7 @@
 #                                                       #
 #   APL1                                                #
 #   Nro ejercicio: 3                                    #
-#   Nro entrega: 1                                      #
+#   Nro entrega: Reentrega                              #
 #   Nombre del script: ejercicio3.sh                    #
 #                                                       #
 #   Integrantes:                                        #

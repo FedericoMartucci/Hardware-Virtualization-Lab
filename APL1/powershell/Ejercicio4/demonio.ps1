@@ -2,8 +2,8 @@
 #               Virtualizacion de Hardware              #
 #                                                       #
 #   APL1                                                #
-#   Nro ejercicio: 5                                    # 
-#   Nro entrega: 1                                      #
+#   Nro ejercicio: 4                                    # 
+#   Nro entrega: Reentrega                              #
 #   Nombre del script: demonio.ps1                      # 
 #                                                       #
 #   Integrantes:                                        #

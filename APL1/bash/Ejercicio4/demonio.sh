@@ -5,7 +5,7 @@
 #                                                       #
 #   APL1                                                #
 #   Nro ejercicio: 4                                    #
-#   Nro entrega: 1                                      #
+#   Nro entrega: Reentrega                              #
 #   Nombre del script: demonio.sh                       #
 #                                                       #
 #   Integrantes:                                        #

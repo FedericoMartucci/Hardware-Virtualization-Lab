@@ -3,7 +3,7 @@
 #                                                       #
 #   APL1                                                #
 #   Nro ejercicio: 1                                    #
-#   Nro entrega: 1                                      #
+#   Nro entrega: Reentrega                              #
 #   Nombre del script: ejercicio1.ps1                   #
 #                                                       #
 #   Integrantes:                                        #
