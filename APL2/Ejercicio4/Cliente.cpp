@@ -73,7 +73,17 @@ void mostrarAyuda() {
 void limpiarRecursos(int signal) {
     close(lock_fd);
     unlink(LOCK_FILE);
+    
     exit(EXIT_SUCCESS);
+}
+
+void finalizarYNotificarServidor(int signal) {
+    mc->cliente_pid = 0; // Reiniciamos el pid del cliente
+    mc->puntos = 0; // Reiniciamos el puntaje
+
+    // Liberamos semaforo del cliente
+    sem_post(sem_cliente);
+    limpiarRecursos(signal);
 }
 
 void manejarSIGUSR1(int signal)
@@ -114,28 +124,28 @@ int main(int argc, char *argv[]) {
 
     // Ignorar SIGINT
     signal(SIGINT, SIG_IGN);
-    signal(SIGTERM, limpiarRecursos);
-    signal(SIGHUP, limpiarRecursos);
+    signal(SIGTERM, finalizarYNotificarServidor);
+    signal(SIGHUP, finalizarYNotificarServidor);
     signal(SIGUSR1, manejarSIGUSR1);
 
     // Crear archivo de bloqueo para evitar tener dos clientes en simultaneo.
     lock_fd = open(LOCK_FILE, O_CREAT | O_RDWR, 0666);
     if (lock_fd == -1)
     {
-        perror("Error al crear archivo de bloqueo");
+        cerr << "Error al crear archivo de bloqueo";
         exit(EXIT_FAILURE);
     }
     if (flock(lock_fd, LOCK_EX | LOCK_NB) == -1)
     {
-        perror("Error: otro cliente ya está en ejecución");
+        cerr << "Error: otro cliente ya está en ejecución" << endl;
         close(lock_fd);
         exit(EXIT_FAILURE);
     }
 
     // Conectar a la memoria compartida
-    idMemoria = shm_open(MEMORIA_COMPARTIDA, O_CREAT | O_RDWR, 0600);
+    idMemoria = shm_open(MEMORIA_COMPARTIDA, O_RDWR, 0600);
     if (idMemoria == -1) {
-        perror("Error al leer memoria compartida");
+        cerr << "Error al leer memoria compartida" << endl;
         limpiarRecursos(0);
         exit(EXIT_FAILURE);
     }
@@ -143,7 +153,7 @@ int main(int argc, char *argv[]) {
     mc = (MemoriaCompartida*) mmap(NULL, sizeof(MemoriaCompartida),
         PROT_READ | PROT_WRITE, MAP_SHARED, idMemoria, 0);
     if (mc == MAP_FAILED) {
-        perror("Error al mapear la memoria compartida");
+        cerr << "Error al mapear la memoria compartida";
         limpiarRecursos(0);
         exit(EXIT_FAILURE);
     }
@@ -189,16 +199,24 @@ int main(int argc, char *argv[]) {
 
         // Obtener la respuesta del usuario
         int respuesta;
-        cout << "Tu respuesta: ";
-        cin >> respuesta;
+        do {
+            cout << "Seleccione la opción deseada: ";
+            cin >> respuesta;
+
+            // Si la respuesta está fuera del rango, indicamos que es inválida
+            if (respuesta < 1 || respuesta > MAX_OPCIONES) {
+                cout << "Respuesta inválida. Por favor, ingresa una opción entre 1 y " << MAX_OPCIONES << "." << endl;
+            }
+
+        } while (respuesta < 1 || respuesta > MAX_OPCIONES);
+        
         mc->preguntas[contador].respuestaCliente = respuesta; // Enviar la respuesta al servidor
         contador ++;
         // Avisar al servidor
         sem_post(sem_cliente);
     }
     sem_wait(sem_puntos);
-    std::cout << "Partida finalizada. Puntos: " << mc->puntos << std::endl;
-
+    cout << "Partida finalizada. Puntos: " << mc->puntos << endl;
 
     return 0;
 }

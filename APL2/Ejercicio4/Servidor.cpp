@@ -62,11 +62,11 @@ sem_t* sem_servidor;
 sem_t* sem_puntos;
 
 void mostrarAyuda() {
-    std::cout << "Uso: ./Servidor.exe -a <archivo> -c <cantidad>\n";
-    std::cout << "Opciones:\n";
-    std::cout << "  -a, --archivo   Archivo con las preguntas (Requerido).\n";
-    std::cout << "  -c, --cantidad  Cantidad de preguntas por partida (Requerido).\n";
-    std::cout << "  -h, --help      Muestra esta ayuda.\n";
+    cout << "Uso: ./Servidor.exe -a <archivo> -c <cantidad>" << endl;
+    cout << "Opciones:" << endl;
+    cout << "  -a, --archivo   Archivo con las preguntas (Requerido)." << endl;
+    cout << "  -c, --cantidad  Cantidad de preguntas por partida (Requerido)." << endl;
+    cout << "  -h, --help      Muestra esta ayuda." << endl;
 }
 
 void manejarSIGUSR1(int signal)
@@ -88,23 +88,19 @@ void manejarSIGUSR1(int signal)
     }
     else
     {
-        cerr << "Recibida señal SIGUSR1, pero hay una partida en progreso. Ignorando..." << std::endl;
+        cerr << "Recibida señal SIGUSR1, pero hay una partida en progreso. Ignorando..." << endl;
     }
 }
 
-
-void limpiarRecursos(int signal)
-{
-    // Liberamos recursos del cliente en caso de haber partida.
-    if(mc->cliente_pid != 0)
-        kill(mc->cliente_pid, SIGUSR1);
-
+void limpiarMemoriaCompartida() {
     // Liberamos memoria compartida
     if (mc) {
         munmap(mc, sizeof(MemoriaCompartida));
         shm_unlink(MEMORIA_COMPARTIDA);
     }
-    
+}
+
+void limpiarSemaforos() {
     // Liberamos semáforo del cliente
     if (sem_cliente) {
         sem_close(sem_cliente);
@@ -122,13 +118,26 @@ void limpiarRecursos(int signal)
         sem_close(sem_puntos);
         sem_unlink(SEM_PUNTOS);
     }
+}
 
+void limpiarLock() {
     // Liberamos archivo de bloqueo
     if (lock_fd != -1) {
         close(lock_fd);
         unlink(LOCK_FILE);
     }
-    
+}
+
+void limpiarRecursos(int signal)
+{
+    // Liberamos recursos del cliente en caso de haber partida.
+    if(mc->cliente_pid != 0)
+        kill(mc->cliente_pid, SIGUSR1);
+
+    limpiarMemoriaCompartida();
+    limpiarSemaforos();
+    limpiarLock();
+
     exit(EXIT_SUCCESS);
 }
 
@@ -187,13 +196,17 @@ void inicializarSemaforos()
 }
 
 int cargarPreguntas(const char* archivo, int cantidadRecibida) {
-    std::ifstream file(archivo);
-    std::string linea;
+    ifstream file(archivo);
+    string linea;
     int indice = 0;
 
+    if (!file.is_open()) {
+        cerr << "Error al abrir el archivo." << endl;
+        limpiarRecursos(0);
+    }
 
-    while (std::getline(file, linea) && indice < cantidadRecibida) {
-        std::string pregunta, opcion1, opcion2, opcion3;
+    while (getline(file, linea) && indice < cantidadRecibida) {
+        string pregunta, opcion1, opcion2, opcion3;
         int respuesta;
 
         size_t pos = linea.find(",");
@@ -201,7 +214,7 @@ int cargarPreguntas(const char* archivo, int cantidadRecibida) {
         linea.erase(0, pos + 1);
 
         pos = linea.find(",");
-        respuesta = std::stoi(linea.substr(0, pos));
+        respuesta = stoi(linea.substr(0, pos));
         linea.erase(0, pos + 1);
 
         pos = linea.find(",");
@@ -243,15 +256,15 @@ int main(int argc, char *argv[]) {
             if (i + 1 < argc) {
                 archivo = argv[++i];
             } else {
-                std::cerr << "Error: Se requiere un archivo después de " << argv[i] << std::endl;
+                cerr << "Error: Se requiere un archivo después de " << argv[i] << endl;
                 mostrarAyuda();
                 exit(EXIT_FAILURE);
             }
         } else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--cantidad") == 0) {
             if (i + 1 < argc) {
-                cantidad = std::stoi(argv[++i]);
+                cantidad = stoi(argv[++i]);
             } else {
-                std::cerr << "Error: Se requiere una cantidad después de " << argv[i] << std::endl;
+                cerr << "Error: Se requiere una cantidad después de " << argv[i] << endl;
                 mostrarAyuda();
                 exit(EXIT_FAILURE);
             }
@@ -259,14 +272,14 @@ int main(int argc, char *argv[]) {
             mostrarAyuda();
             exit(EXIT_SUCCESS);
         } else {
-            std::cerr << "Parámetro desconocido: " << argv[i] << std::endl;
+            cerr << "Parámetro desconocido: " << argv[i] << endl;
             mostrarAyuda();
             exit(EXIT_FAILURE);
         }
     }
 
     if (cantidad <= 0) {
-        std::cerr << "Error: La cantidad de preguntas debe ser mayor a 0" << std::endl;
+        cerr << "Error: La cantidad de preguntas debe ser mayor a 0" << endl;
         exit(EXIT_FAILURE);
     }
 
@@ -274,7 +287,7 @@ int main(int argc, char *argv[]) {
     signal(SIGTERM, limpiarRecursos);
     signal(SIGHUP, limpiarRecursos);
     signal(SIGUSR1, manejarSIGUSR1);
-
+    
     // Crear archivo de bloqueo para evitar tener dos servidores en simultaneo.
     lock_fd = open(LOCK_FILE, O_CREAT | O_RDWR, 0666);
     if (lock_fd == -1)
@@ -299,29 +312,39 @@ int main(int argc, char *argv[]) {
     // Cargamos las preguntas del archivo csv
     mc->preguntasCargadas = cargarPreguntas(archivo, cantidad);
 
-    std::cout << "Servidor iniciado. Esperando usuario..." << std::endl;
+    cout << "Servidor iniciado. Esperando usuario..." << endl;
     
     while (true) {
         mc->cliente_pid = 0;
         sem_post(sem_servidor);
         sem_wait(sem_cliente); // Esperamos al cliente
         mc->puntos = 0;
-        std::cout << "Cliente conectado.\n";
+        cout << "Cliente conectado." << endl;
 
         // Mostramos preguntas y procesamos respuestas
         for (int i = 0; i < mc->preguntasCargadas; ++i) {
             // Esperamos respuesta del cliente
             sem_wait(sem_cliente);
+           
+            if(mc->cliente_pid == 0) {
+                cout << "Servidor notificado del cierre del cliente. Esperando nuevo cliente..." << endl;
+                // Salimos del ciclo for de las preguntas ya que el cliente se fue
+                break;
+            }
             // Leemos respuesta del cliente
             if (mc->preguntas[i].respuestaCliente == mc->preguntas[i].respuestaCorrecta) {
                 mc->puntos++;
             }
         }
+        if(mc->cliente_pid == 0) {
+            // Esto es necesario para volver a ejecutar el while nuevamente ya que el cliente se fue
+            continue;
+        } 
         sem_post(sem_puntos); // Permitimos al cliente finalizar
-        std::cout << "Fin de la partida. Esperando usuario...\n";
+        cout << "Fin de la partida. Esperando usuario..." << endl;
     }
 
-    printf("Finalizando servidor...\n");
+    cout << "Finalizando servidor..." << endl;
     limpiarRecursos(0);
    
     return EXIT_SUCCESS;
