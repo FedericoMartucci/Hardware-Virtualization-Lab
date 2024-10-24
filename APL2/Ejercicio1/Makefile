@@ -5,5 +5,5 @@ ARCHIVO_EXE = ejercicio1.exe
 all:
 	$(COMPILADOR) $(ARCHIVO_ORIGEN) -o $(ARCHIVO_EXE)
 
-clear:
+clean:
 	rm -f $(ARCHIVO_EXE)

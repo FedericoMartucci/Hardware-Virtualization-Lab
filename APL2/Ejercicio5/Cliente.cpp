@@ -50,6 +50,7 @@ typedef struct
 
 // Variables globales
 vector<Pregunta> preguntas;
+int socketCliente;
 
 void mostrarAyuda() {
     cout << "Uso: ./Cliente.exe -n <nombre_jugador> -p <puerto> -s <ip_del_servidor>\n";
@@ -61,6 +62,7 @@ void mostrarAyuda() {
 }
 
 void limpiarRecursos(int signal) {
+    close(socketCliente);
     exit(EXIT_SUCCESS);
 }
 
@@ -273,7 +275,6 @@ int main(int argc, char *argv[]) {
     string servidor;
     vector<char> buffer(BUFFER_SIZE);
     int valorLeido;
-    int socketCliente;
     int puerto = 0;
     
     if (argc < 7) {

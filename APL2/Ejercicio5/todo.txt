@@ -1,9 +1,0 @@
-Validar caso en donde .csv no existe
-Testear tema kill Cliente
-Testear tema kill Servidor
-Testear si Servidor se puede instancar >1
-Testear cliente queriendose conectar con juego iniciado
-
-Validar impresiones por consola en Servidor.exi
-Mejorar mensajes por pantalla en ambos .exe
-

@@ -182,6 +182,8 @@ void limpiarRecursos(int signal)
         unlink(LOCK_FILE);
     }
 
+    cerrarSocketsClientes();
+
     exit(EXIT_SUCCESS);
 }
 
@@ -193,7 +195,7 @@ int cargarPreguntas(const char *archivo, int cantidadRecibida)
 
     if (!file.is_open()) {
         cerr << "Error al abrir el archivo." << endl;
-        return -1;
+        limpiarRecursos(0);
     }
 
     while (getline(file, linea) && cantidadDePreguntas < cantidadRecibida)
