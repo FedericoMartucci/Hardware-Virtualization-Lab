@@ -13,10 +13,10 @@ COPY . /apl
 WORKDIR /apl
 
 # Compilar cada ejercicio
-RUN make -C ./Ejercicio1 && \
-    make -C ./Ejercicio2 && \
-    make -C ./Ejercicio3 && \
-    make -C ./Ejercicio4 && \
+RUN make -C ./Ejercicio1 || \
+    make -C ./Ejercicio2 || \
+    make -C ./Ejercicio3 || \
+    make -C ./Ejercicio4 || \
     make -C ./Ejercicio5
 
 # comando por defecto 
