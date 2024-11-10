@@ -31,11 +31,7 @@ const int CREACION_EXITOSA = 0;
 const int ERROR_CREACION_FORK = -1;
 const int ERROR_PARAMETROS = -2;
 
-const int SEGUNDOS_ESPERA_PROCESO_PADRE = 10;
-const int SEGUNDOS_ESPERA_PROCESOS_HIJOS = 10;
-const int SEGUNDOS_ESPERA_PROCESOS_NIETOS = 10;
-const int SEGUNDOS_ESPERA_PROCESOS_BIZNIETOS = 10;
-const int SEGUNDOS_ESPERA_PROCESOS_ZOMBIES = 5;
+const int SEGUNDOS_ESPERA = 15;
 
 string NOMBRE_PROCESO_PADRE = "Padre";
 string NOMBRE_PROCESO_PRIMER_HIJO = "Hijo 1";
@@ -43,7 +39,8 @@ string NOMBRE_PROCESO_SEGUNDO_HIJO = "Hijo 2";
 string NOMBRE_PROCESO_PRIMER_NIETO = "Nieto 1";
 string NOMBRE_PROCESO_SEGUNDO_NIETO = "Zombie";
 string NOMBRE_PROCESO_TERCER_NIETO = "Nieto 3";
-string NOMBRE_PROCESO_CUARTO_NIETO = "Demonio";
+string NOMBRE_PROCESO_CUARTO_NIETO = "PadreDemonio";
+string NOMBRE_PROCESO_DEMONIO = "Demonio";
 string NOMBRE_PROCESO_DESCONOCIDO = "NombreProcesoDesconocido";
 
 void ayuda();
@@ -56,7 +53,8 @@ void informarProcesoActual(string nombreProceso, int idProceso, int idProcesoPad
 string obtenerNombreProceso(pid_t pid);
 int validarParametroAyuda(int cantidadDeParametros, string valorParametro);
 
-void ayuda() {
+void ayuda()
+{
     cout << "============================== Ejercicio1.cpp ==============================" << endl;
     cout << "Este script crea una jerarquía de procesos como se describe en el enunciado:" << std::endl;
     cout << "" << endl;
@@ -75,18 +73,21 @@ void ayuda() {
     cout << "============================================================================" << endl;
 }
 
-void convertirEnDemonio() {
+void convertirEnDemonio()
+{
     ignorarSenialesDeTerminal();
 
     // El proceso padre sale del programa, dejando al proceso hijo en ejecución.
-    if (fork() > 0) {
+    if (fork() > 0)
+    {
         exit(0);
     }
 
     /*setsid(): Crea una nueva sesión y establece al proceso actual como líder de esa sesión.
     Esto asegura que el proceso ya no tenga una terminal de control, lo que es esencial para que
     un demonio funcione correctamente.*/
-    if (setsid() < 0) {
+    if (setsid() < 0)
+    {
         exit(EXIT_FAILURE);
     }
 
@@ -97,9 +98,12 @@ void convertirEnDemonio() {
     /* Este segundo fork es para garantizar que el proceso demonio no pueda adquirir un terminal de control
     en el futuro. Una vez que se realiza este fork, el proceso es garantizado para no ser el líder de ningún
     grupo de sesiones.*/
-    if (fork() > 0) {
+    if (fork() > 0)
+    {
         exit(0);
     }
+
+    prctl(PR_SET_NAME, NOMBRE_PROCESO_DEMONIO.c_str(), 0, 0, 0);
 
     // Cambio el directorio de trabajo actual del demonio al directorio raíz ("/").
     chdir("/");
@@ -112,108 +116,139 @@ void convertirEnDemonio() {
 
     /* Cierro todos los descriptores de archivo heredados, asegurando que el demonio no tenga abiertos
     descriptores de archivo de sus procesos padres.*/
-    for (int fd = sysconf(_SC_OPEN_MAX); fd > 0; fd--) {
+    for (int fd = sysconf(_SC_OPEN_MAX); fd > 0; fd--)
+    {
         close(fd);
     }
 
     evitarInteraccionConLaTerminal();
 }
 
-int crearFork() {
+int crearFork()
+{
     pid_t procesoHijo = fork();
-    if (procesoHijo == -1) {
+    if (procesoHijo == -1)
+    {
         perror("Error en la creacion de fork()");
         exit(ERROR_CREACION_FORK);
     }
     return procesoHijo;
 }
 
-void esperarEnterUsuario() {
+void esperarEnterUsuario()
+{
     cout << "Presione enter para finalizar..." << endl;
     getchar();
 }
 
-void evitarInteraccionConLaTerminal() {
+void evitarInteraccionConLaTerminal()
+{
     // Reabro los descriptores de archivo estándar (stdin, stdout, stderr) y los redirigen a /dev/null
-    open("/dev/null", O_RDWR);  // stdin
-    dup(0);                     // stdout
-    dup(0);                     // stderr
+    open("/dev/null", O_RDWR); // stdin
+    dup(0);                    // stdout
+    dup(0);                    // stderr
 }
 
-void ignorarSenialesDeTerminal() {
+void ignorarSenialesDeTerminal()
+{
     signal(SIGTTOU, SIG_IGN);
     signal(SIGTTIN, SIG_IGN);
     signal(SIGTSTP, SIG_IGN);
     signal(SIGHUP, SIG_IGN);
 }
 
-void informarProcesoActual(string nombreProceso, int idProceso, int idProcesoPadre) {
+void informarProcesoActual(string nombreProceso, int idProceso, int idProcesoPadre)
+{
     cout << "Soy el proceso " << nombreProceso << " con PID " << idProceso << ", mi padre es " << idProcesoPadre << endl;
 }
 
-string obtenerNombreProceso(pid_t pid) {
+string obtenerNombreProceso(pid_t pid)
+{
     string ruta = "/proc/" + to_string(pid) + "/comm";
     ifstream archivoProceso(ruta);
-    if (archivoProceso.is_open()) {
+    if (archivoProceso.is_open())
+    {
         string nombre;
         getline(archivoProceso, nombre);
         return nombre;
-    } else {
+    }
+    else
+    {
         return NOMBRE_PROCESO_DESCONOCIDO;
     }
 }
 
-int validarParametroAyuda(int cantidadDeParametros, string valorParametro) {
-    if (cantidadDeParametros == 2) {
-        if (valorParametro == "-h" || valorParametro == "--help") {
+int validarParametroAyuda(int cantidadDeParametros, string valorParametro)
+{
+    if (cantidadDeParametros == 2)
+    {
+        if (valorParametro == "-h" || valorParametro == "--help")
+        {
             ayuda();
             return EXIT_SUCCESS;
-        } else {
+        }
+        else
+        {
             cout << "El parametro indicado no corresponde al parametro ayuda (-h o --help)" << endl;
             return ERROR_PARAMETROS;
         }
-    } else {
+    }
+    else
+    {
         cout << "El programa solo puede recibir el parametro de ayuda (-h o --help)" << endl;
         return ERROR_PARAMETROS;
     }
 }
 
-int main(int argc, char* argv[]) {
-    if (argc > 1) {
+int main(int argc, char *argv[])
+{
+    if (argc > 1)
+    {
         return validarParametroAyuda(argc, argv[1]);
     }
     cout << "Por favor, aguarde unos segundos hasta que se muestre la jerarquia completa ..." << endl;
     /*=============== Estoy en el proceso Padre ===============*/
     prctl(PR_SET_NAME, NOMBRE_PROCESO_PADRE.c_str(), 0, 0, 0);
     informarProcesoActual(obtenerNombreProceso(getpid()), getpid(), getppid());
-    sleep(SEGUNDOS_ESPERA_PROCESO_PADRE);
+
     int estado;
     pid_t pidHijo1 = fork();
-    if (pidHijo1 == CREACION_EXITOSA) {
+    
+    if (pidHijo1 == CREACION_EXITOSA)
+    {
         /*=============== Estoy en el proceso Hijo 1 ===============*/
         prctl(PR_SET_NAME, NOMBRE_PROCESO_PRIMER_HIJO.c_str(), 0, 0, 0);
         informarProcesoActual(obtenerNombreProceso(getpid()), getpid(), getppid());
-        sleep(SEGUNDOS_ESPERA_PROCESOS_HIJOS);
-        if (crearFork() == CREACION_EXITOSA) {
+        if (crearFork() == CREACION_EXITOSA)
+        {
             /*=============== Estoy en el proceso Nieto 1 ===============*/
             prctl(PR_SET_NAME, NOMBRE_PROCESO_PRIMER_NIETO.c_str(), 0, 0, 0);
             informarProcesoActual(obtenerNombreProceso(getpid()), getpid(), getppid());
-            sleep(SEGUNDOS_ESPERA_PROCESOS_NIETOS);
-        } else {
+            sleep(SEGUNDOS_ESPERA);
+        }
+        else
+        {
             /*=============== Estoy en el proceso Hijo 1 ===============*/
-            if (crearFork() == CREACION_EXITOSA) {
+            if (crearFork() == CREACION_EXITOSA)
+            {
                 /*=============== Estoy en el proceso Zombie (Nieto 2) ===============*/
                 prctl(PR_SET_NAME, NOMBRE_PROCESO_SEGUNDO_NIETO.c_str(), 0, 0, 0);
                 informarProcesoActual(obtenerNombreProceso(getpid()), getpid(), getppid());
-                sleep(SEGUNDOS_ESPERA_PROCESOS_ZOMBIES);
-                exit(0);
-            } else {
+                sleep(SEGUNDOS_ESPERA);
+                exit(EXIT_SUCCESS);
+            }
+            else
+            {
                 /*=============== Estoy en el proceso Hijo 1 ===============*/
-                if (crearFork() == CREACION_EXITOSA) {
+                if (crearFork() == CREACION_EXITOSA)
+                {
                     /*=============== Estoy en el proceso Nieto 3 ===============*/
                     prctl(PR_SET_NAME, NOMBRE_PROCESO_TERCER_NIETO.c_str(), 0, 0, 0);
                     informarProcesoActual(obtenerNombreProceso(getpid()), getpid(), getppid());
-                } else {
+                    sleep(SEGUNDOS_ESPERA);
+                }
+                else
+                {
                     /*=============== Estoy en el proceso Hijo 1 ===============*/
                     // Espero a Nieto 3
                     wait(NULL);
@@ -222,35 +257,44 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
-    } else if (pidHijo1 > 0) {
+    }
+    else if (pidHijo1 > 0)
+    {
         /*=============== Estoy en el proceso Padre ===============*/
         pid_t pidHijo2 = fork();
-        if (pidHijo2 == CREACION_EXITOSA) {
+        if (pidHijo2 == CREACION_EXITOSA)
+        {
             /*=============== Estoy en el proceso Hijo 2 ===============*/
             prctl(PR_SET_NAME, NOMBRE_PROCESO_SEGUNDO_HIJO.c_str(), 0, 0, 0);
             informarProcesoActual(obtenerNombreProceso(getpid()), getpid(), getppid());
-            sleep(SEGUNDOS_ESPERA_PROCESOS_HIJOS);
-            if (crearFork() == CREACION_EXITOSA) {
+
+            if (crearFork() == CREACION_EXITOSA)
+            {
                 /*=============== Estoy en el proceso Demonio (Hijo del proceso Hijo 2) ===============*/
-                prctl(PR_SET_NAME, NOMBRE_PROCESO_CUARTO_NIETO.c_str(), 0, 0, 0);
+                prctl(PR_SET_NAME, NOMBRE_PROCESO_CUARTO_NIETO.c_str(), 0, 0, 0); // Este proceso muere dentro de la funcion convertirEnDemonio()
                 informarProcesoActual(obtenerNombreProceso(getpid()), getpid(), getppid());
                 convertirEnDemonio();
+                sleep(SEGUNDOS_ESPERA);
             }
-            // No hay else ya que al proceso hijo lo saque de la sesion, por lo tanto Hijo 2 no tiene que esperar a nadie
-        } else if (pidHijo2 > 0) {
+            sleep(SEGUNDOS_ESPERA);
+        }
+        else if (pidHijo2 > 0)
+        {
             /*=============== Estoy en el proceso Padre ===============*/
             // Debo especificar que pid tengo que esperar porque podria hacer un wait del proceso Zombie (Hijo 2)
-            // Espero a Hijo 2
-            waitpid(pidHijo2, &estado, 0);
-            // Espero a Hijo 1
-            waitpid(pidHijo1, &estado, 0);
-            sleep(SEGUNDOS_ESPERA_PROCESO_PADRE);
+            waitpid(pidHijo2, &estado, 0);  // Esperar solo a Hijo 2
+            waitpid(pidHijo1, &estado, 0);  // Esperar solo a Hijo 1
+            sleep(SEGUNDOS_ESPERA);
             esperarEnterUsuario();
-        } else {
+        }
+        else
+        {
             cout << "Hubo un error en la creacion del fork" << endl;
             return ERROR_CREACION_FORK;
         }
-    } else {
+    }
+    else
+    {
         cout << "Hubo un error en la creacion del fork" << endl;
         return ERROR_CREACION_FORK;
     }
