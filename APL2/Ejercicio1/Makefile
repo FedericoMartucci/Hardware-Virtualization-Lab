@@ -2,7 +2,7 @@
 COMPILER = g++
 
 # Flags de compilación
-COMPILER_FLAGS = -std=c++17 -Wall -pthread
+COMPILER_FLAGS = -std=c++17 -Wall
 
 # Archivos fuente y ejecutable
 SRC = ejercicio1.cpp

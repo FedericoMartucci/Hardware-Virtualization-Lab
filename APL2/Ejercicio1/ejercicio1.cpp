@@ -4,7 +4,7 @@
 #                                                       #
 #   APL2                                                #
 #   Nro ejercicio: 1                                    #
-#   Nro entrega: 1                                      #
+#   Nro entrega: 2                                      #
 #   Nombre del script: ejercicio1.cpp                   #
 #                                                       #
 #   Integrantes:                                        #
