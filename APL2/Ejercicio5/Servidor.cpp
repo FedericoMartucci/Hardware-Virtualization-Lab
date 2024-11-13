@@ -321,8 +321,14 @@ vector<char> serializarPregunta(const Pregunta &pregunta) {
 
 bool enviarBuffer(int socket, const vector<char> &buffer) {
     int size = buffer.size();
-    // Enviar el tamaño del buffer
-    int bytesSent = send(socket, &size, sizeof(int), 0);
+
+    // Crear un buffer de 6 bytes para enviar el tamaño
+    char sizeBuffer[6] = {0}; // Inicializar con ceros
+    // Convertir el tamaño del buffer a una cadena y almacenarlo en sizeBuffer
+    snprintf(sizeBuffer, sizeof(sizeBuffer), "%d", size);
+
+    // Enviar el buffer de 6 bytes con el tamaño
+    int bytesSent = send(socket, sizeBuffer, sizeof(sizeBuffer), 0);
     if (bytesSent <= 0) {
         if (bytesSent == 0) {
             // El cliente se desconectó
@@ -333,6 +339,7 @@ bool enviarBuffer(int socket, const vector<char> &buffer) {
         }
         return false;
     }
+
     // Enviar el contenido del buffer
     bytesSent = send(socket, buffer.data(), size, 0);
     if (bytesSent <= 0) {
@@ -349,27 +356,28 @@ bool enviarBuffer(int socket, const vector<char> &buffer) {
 }
 
 vector<char> recibirBuffer(int socket) {
-    int size;
-    // Recibir el tamaño del buffer
-    int bytesReceived = recv(socket, &size, sizeof(int), 0);
+    char recvBuffer[6] = {0};
+    int bytesReceived = recv(socket, recvBuffer, sizeof(recvBuffer), 0);
     if (bytesReceived <= 0) {
         if (bytesReceived == 0) {
-            // El cliente se desconectó
-            cerr << "El cliente se ha desconectado." << endl;
+            cerr << "El servidor se ha desconectado." << endl;
         } else {
-            // Error en la recepción
             perror("Error en recv");
         }
         return {};
     }
+
+    // Convertir el tamaño recibido (en recvBuffer) de cadena a entero
+    int bufferSize = atoi(recvBuffer);
+
     // Reservar espacio para el contenido del buffer
-    vector<char> buffer(size);
+    vector<char> buffer(bufferSize);
     // Recibir el contenido del buffer
-    bytesReceived = recv(socket, buffer.data(), size, 0);
+    bytesReceived = recv(socket, buffer.data(), bufferSize, 0);
     if (bytesReceived <= 0) {
         if (bytesReceived == 0) {
             // El cliente se desconectó
-            cerr << "El cliente se ha desconectado." << endl;
+            cerr << "El Servidor se ha desconectado." << endl;
         } else {
             // Error en la recepción
             perror("Error en recv");
@@ -532,7 +540,7 @@ int main(int argc, char *argv[])
                     continue;
                 }
                 strcpy(menIni, "Siguiente turno!");
-                if (send(jugador->socketId, menIni, strlen(menIni), 0) <= 0) {
+                if (send(jugador->socketId, menIni, sizeof(menIni) - 1, 0) <= 0) {
                     perror("Error en mensaje o jugador desconectado");
                     printf("Error, jugador desconectado o error de conexion\n");
                     close(jugador->socketId);
