@@ -173,6 +173,13 @@ void manejarSIGUSR1(int signal)
     }
 }
 
+void cerrarSocketsClientes() {
+    for (auto it = jugadores.begin(); it != jugadores.end();) {
+        close(it->socketId);
+        it = jugadores.erase(it);
+    }
+}
+
 void limpiarRecursos(int signal)
 {
     // Liberamos archivo de bloqueo
@@ -378,13 +385,6 @@ char deserializarRespuesta (const vector<char> &buffer){
     return respuesta;
 }
 
-void cerrarSocketsClientes() {
-    for (auto it = jugadores.begin(); it != jugadores.end();) {
-        close(it->socketId);
-        it = jugadores.erase(it);
-    }
-}
-
 pair<int, list<Jugador>> obtenerGanadores() {
     int puntajeMaximo = 0;
     list<Jugador> ganadores;
@@ -448,7 +448,7 @@ int main(int argc, char *argv[])
 
      while (usuariosConectados < cantUsuarios) {
         int socketCliente;
-        if ((socketCliente = accept(socketServidor, NULL, NULL)) < 0) {
+        if ((socketCliente = accept(socketServidor, (struct sockaddr *)NULL, NULL)) < 0) {
             perror("Error en la conexión con el cliente.");
             close(socketServidor);
             limpiarRecursos(1);
